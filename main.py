@@ -24,17 +24,34 @@ async def get_index(request: Request):
 async def websocket_endpoint(websocket: WebSocket, index: str):
     await websocket.accept()
     print(f"Client connected for index: {index}")
-    try:
-        async with websockets.connect('wss://ws.binaryws.com/websockets/v3?app_id=1089') as ws:
-            await ws.send(json.dumps({"ticks": index}))
-            while True:
-                msg = await ws.recv()
-                await websocket.send_text(msg)
-    except Exception as e:
-        print("[App Error]", e)
-    finally:
-        print("Connection closed")
 
+    try:
+        while True:
+            try:
+                # Connect to Deriv WebSocket API
+                async with websockets.connect("wss://ws.deriv.com/websockets/v3?app_id=1089") as deriv_ws:
+                    await deriv_ws.send(json.dumps({
+                        "ticks": index,
+                        "subscribe": 1
+                    }))
+
+                    while True:
+                        msg = await deriv_ws.recv()
+                        data = json.loads(msg)
+
+                        # Send to frontend only if tick data exists
+                        if "tick" in data:
+                            await websocket.send_json(data)
+
+            except (websockets.ConnectionClosed, websockets.WebSocketException, asyncio.TimeoutError) as e:
+                print(f"[Deriv WS Error] {e}, reconnecting in 3s...")
+                await asyncio.sleep(3)  # Wait and reconnect
+
+    except WebSocketDisconnect:
+        print(f"Client disconnected from index: {index}")
+    except Exception as e:
+        print(f"[App Error] {e}")
+        await websocket.close()
 
 # Run locally or on Render
 if __name__ == "__main__":
