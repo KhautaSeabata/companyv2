@@ -1,114 +1,207 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" >
 <head>
-    <meta charset="UTF-8">
-    <title>Volatility Index Realtime</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <title>Volatility Index - MT5 Style</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-    <h2>Volatility Index <span id="index">R_75</span></h2>
+  <header class="app-header">
+    <div class="title">Volatility Index</div>
+    <div class="index-name" id="index">R_75</div>
+    <div class="connection-status" id="connection-status">Connecting...</div>
+    <button id="btn-reconnect" title="Reconnect WebSocket" hidden>⟳</button>
+  </header>
 
-    <div class="chart-scroll-wrapper">
-        <div class="chart-container">
-            <canvas id="chart"></canvas>
-        </div>
+  <main class="app-main">
+    <div class="chart-wrapper">
+      <canvas id="chart"></canvas>
     </div>
 
-    <div id="messages"></div>
+    <div id="messages" class="messages"></div>
+  </main>
 
-    <script>
-        const index = "R_75";
-        const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${index}`);
-        const ctx = document.getElementById('chart').getContext('2d');
-        const messages = document.getElementById('messages');
+  <script>
+    const index = "R_75";
+    const connStatusEl = document.getElementById("connection-status");
+    const btnReconnect = document.getElementById("btn-reconnect");
+    const messages = document.getElementById("messages");
 
-        const chart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [],
-                datasets: [{
-                    label: 'Price',
-                    data: [],
-                    borderColor: '#00ffcc',
-                    borderWidth: 2,
-                    tension: 0.3,
-                    pointRadius: 0,
-                }]
+    let socket;
+    let chart;
+
+    function createSocket() {
+      socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${index}`);
+
+      socket.onopen = () => {
+        connStatusEl.textContent = "Connected";
+        connStatusEl.classList.remove("disconnected");
+        btnReconnect.hidden = true;
+      };
+
+      socket.onclose = () => {
+        connStatusEl.textContent = "Disconnected";
+        connStatusEl.classList.add("disconnected");
+        btnReconnect.hidden = false;
+      };
+
+      socket.onerror = (e) => {
+        connStatusEl.textContent = "Error";
+        connStatusEl.classList.add("disconnected");
+        btnReconnect.hidden = false;
+      };
+
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        const time = new Date(data.tick.epoch * 1000).toLocaleTimeString();
+        const price = data.tick.quote;
+
+        // Add new label and price point
+        chart.data.labels.push(time);
+        chart.data.datasets[0].data.push(price);
+
+        // Keep data array max length (e.g. 60 points)
+        if (chart.data.labels.length > 60) {
+          chart.data.labels.shift();
+          chart.data.datasets[0].data.shift();
+        }
+
+        // Show signal lines if present
+        if (data.signal) {
+          const { signal, entry, tp, sl, timestamp } = data.signal;
+          const label = new Date(timestamp * 1000).toLocaleTimeString();
+          const color = signal === 'buy' ? '#00ff00' : '#ff5050';
+
+          chart.data.datasets.push({
+            label: `${signal.toUpperCase()} @ ${entry}`,
+            data: new Array(chart.data.labels.length - 1).fill(null).concat(entry),
+            borderColor: color,
+            borderDash: [5, 5],
+            borderWidth: 2,
+            pointRadius: 0,
+          });
+
+          chart.data.datasets.push({
+            label: `TP @ ${tp}`,
+            data: new Array(chart.data.labels.length - 1).fill(null).concat(tp),
+            borderColor: '#33cc33',
+            borderDash: [3, 3],
+            borderWidth: 2,
+            pointRadius: 0,
+          });
+
+          chart.data.datasets.push({
+            label: `SL @ ${sl}`,
+            data: new Array(chart.data.labels.length - 1).fill(null).concat(sl),
+            borderColor: '#ff9933',
+            borderDash: [3, 3],
+            borderWidth: 2,
+            pointRadius: 0,
+          });
+
+          messages.textContent = `${label} — ${signal.toUpperCase()} signal! Entry: ${entry}, TP: ${tp}, SL: ${sl}`;
+        } else {
+          messages.textContent = `Last price: ${price}`;
+        }
+
+        chart.update();
+      };
+    }
+
+    // Initialize Chart.js line chart with MT5 style colors
+    function initChart() {
+      const ctx = document.getElementById('chart').getContext('2d');
+
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Price',
+            data: [],
+            borderColor: '#1de9b6',
+            backgroundColor: 'rgba(29, 233, 182, 0.1)',
+            borderWidth: 2,
+            tension: 0.25,
+            pointRadius: 0,
+            fill: true,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          interaction: {
+            mode: 'nearest',
+            intersect: false,
+          },
+          scales: {
+            x: {
+              ticks: {
+                color: '#8f8f8f',
+                font: { size: 11 },
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 10
+              },
+              grid: {
+                color: '#2a2a2a',
+                drawTicks: false,
+              }
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: false,
-                scales: {
-                    x: {
-                        display: true,
-                        ticks: { color: '#ccc' },
-                        grid: { color: '#333' }
-                    },
-                    y: {
-                        beginAtZero: false,
-                        ticks: { color: '#ccc' },
-                        grid: { color: '#333' }
-                    }
-                },
-                plugins: {
-                    legend: {
-                        labels: {
-                            color: '#00ffcc',
-                            font: { size: 14 }
-                        }
-                    }
-                }
+            y: {
+              ticks: {
+                color: '#8f8f8f',
+                font: { size: 12 },
+                maxTicksLimit: 7,
+                beginAtZero: false,
+                callback: value => value.toFixed(2)
+              },
+              grid: {
+                color: '#2a2a2a',
+                borderDash: [2, 4]
+              }
             }
-        });
-
-        socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            const time = new Date(data.tick.epoch * 1000).toLocaleTimeString();
-            const price = data.tick.quote;
-
-            chart.data.labels.push(time);
-            chart.data.datasets[0].data.push(price);
-
-            if (data.signal) {
-                const { signal, entry, tp, sl, timestamp } = data.signal;
-                const label = new Date(timestamp * 1000).toLocaleTimeString();
-                const color = signal === 'buy' ? 'lime' : 'red';
-
-                chart.data.datasets.push({
-                    label: `${signal.toUpperCase()} @ ${entry}`,
-                    data: new Array(chart.data.labels.length - 1).fill(null).concat(entry),
-                    borderColor: color,
-                    borderDash: [5, 5],
-                    borderWidth: 1,
-                    pointRadius: 0,
-                });
-
-                chart.data.datasets.push({
-                    label: `TP @ ${tp}`,
-                    data: new Array(chart.data.labels.length - 1).fill(null).concat(tp),
-                    borderColor: 'green',
-                    borderDash: [2, 2],
-                    borderWidth: 1,
-                    pointRadius: 0,
-                });
-
-                chart.data.datasets.push({
-                    label: `SL @ ${sl}`,
-                    data: new Array(chart.data.labels.length - 1).fill(null).concat(sl),
-                    borderColor: 'orange',
-                    borderDash: [2, 2],
-                    borderWidth: 1,
-                    pointRadius: 0,
-                });
-
-                messages.innerText = `${label} — ${signal.toUpperCase()} signal! Entry: ${entry}, TP: ${tp}, SL: ${sl}`;
+          },
+          plugins: {
+            legend: {
+              labels: {
+                color: '#00bfa5',
+                font: { size: 14, weight: 'bold' }
+              }
+            },
+            tooltip: {
+              mode: 'index',
+              intersect: false,
+              backgroundColor: '#222',
+              titleColor: '#0f0',
+              bodyColor: '#0f0',
+              cornerRadius: 4,
+              displayColors: false,
+              callbacks: {
+                label: ctx => `Price: ${ctx.formattedValue}`
+              }
             }
+          }
+        }
+      });
+    }
 
-            chart.update();
-        };
-    </script>
+    // Button to reconnect WS if connection lost
+    btnReconnect.addEventListener('click', () => {
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) return;
+      connStatusEl.textContent = "Reconnecting...";
+      connStatusEl.classList.remove("disconnected");
+      btnReconnect.hidden = true;
+      createSocket();
+    });
+
+    window.onload = () => {
+      initChart();
+      createSocket();
+    };
+  </script>
 </body>
 </html>
