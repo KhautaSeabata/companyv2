@@ -1,0 +1,30 @@
+body {
+    background-color: #111;
+    color: #eee;
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+}
+
+h2 {
+    text-align: center;
+    color: #00ffcc;
+}
+
+.chart-scroll-wrapper {
+    overflow-x: auto;
+    padding: 10px;
+}
+
+.chart-container {
+    position: relative;
+    min-width: 800px;
+    height: 400px;
+}
+
+#messages {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 16px;
+    color: #0f0;
+}
