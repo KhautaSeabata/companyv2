@@ -1,34 +1,46 @@
 import asyncio
-import websockets
-from analyzer import Analyzer
-from datetime import datetime
-import json
+from aiohttp import web
 
-analyzer = Analyzer()
+# Handler for normal HTTP requests (GET, HEAD)
+async def http_handler(request):
+    return web.Response(text="Hello, this is HTTP!")
 
-async def handler(websocket, path):
-    index = path.strip("/").split("/")[-1]
-    while True:
-        quote = simulate_live_price()
-        timestamp = int(datetime.utcnow().timestamp())
+# Handler for WebSocket connections on /ws
+async def websocket_handler(request):
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
 
-        tick_data = {'tick': {'quote': quote, 'epoch': timestamp}}
-        signal_data = analyzer.update(quote, timestamp)
+    print("WebSocket connection opened")
 
-        if signal_data:
-            tick_data['signal'] = signal_data
+    async for msg in ws:
+        if msg.type == web.WSMsgType.TEXT:
+            print(f"Received message: {msg.data}")
+            # Echo back or process the message
+            await ws.send_str(f"Echo: {msg.data}")
+        elif msg.type == web.WSMsgType.ERROR:
+            print(f"WebSocket connection closed with exception {ws.exception()}")
 
-        await websocket.send(json.dumps(tick_data))
-        await asyncio.sleep(1)
+    print("WebSocket connection closed")
+    return ws
 
-def simulate_live_price():
-    from random import uniform
-    return round(100 + uniform(-1, 1), 4)
+async def on_startup(app):
+    print("Server is starting...")
 
-async def main():
-    async with websockets.serve(handler, "0.0.0.0", 8000):  # Use 0.0.0.0 in production
-        print("WebSocket server started on port 8000")
-        await asyncio.Future()  # Run forever
+async def on_shutdown(app):
+    print("Server is shutting down...")
+
+def main():
+    app = web.Application()
+    
+    # Routes
+    app.router.add_get('/', http_handler)
+    app.router.add_head('/', http_handler)  # Handle HEAD requests properly
+    app.router.add_get('/ws', websocket_handler)  # WebSocket endpoint
+
+    app.on_startup.append(on_startup)
+    app.on_shutdown.append(on_shutdown)
+
+    web.run_app(app, port=8765)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
