@@ -1,32 +1,33 @@
 import os
 import asyncio
-import signal
-import http
-import websockets
+from fastapi import FastAPI, WebSocket
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
-async def echo(ws):
-    async for msg in ws:
-        await ws.send(msg)
+app = FastAPI()
 
-async def health_check(path, request_headers):
-    # Return 200 OK for /healthz so Render’s health check passes
-    if path == "/healthz":
-        return http.HTTPStatus.OK, [], b"OK\n"
+# Serve static files like index.html and style.css
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-async def main():
-    port = int(os.environ.get("PORT", 8765))          # Use $PORT, default 8765 for local dev
-    loop = asyncio.get_running_loop()
-    stop = loop.create_future()
-    loop.add_signal_handler(signal.SIGTERM, stop.set_result, None) 
-    # Serve on all interfaces (0.0.0.0) at the given port
-    async with websockets.serve(
-        echo,
-        host="0.0.0.0",
-        port=port,
-        process_request=health_check,               # health check on /healthz
-    ):
-        print(f"WebSocket server listening on port {port}")
-        await stop
+# Serve the HTML file at root
+@app.get("/")
+async def get_index():
+    return FileResponse("static/index.html")
 
-if __name__ == "__main__":
-    asyncio.run(main())
+# WebSocket endpoint
+@app.websocket("/ws/{index}")
+async def websocket_endpoint(websocket: WebSocket, index: str):
+    await websocket.accept()
+    try:
+        while True:
+            # Simulate price ticks (replace with real logic)
+            await websocket.send_json({
+                "tick": {
+                    "epoch": int(asyncio.time.time()),
+                    "quote": 123.45  # Replace with real-time quote
+                }
+            })
+            await asyncio.sleep(1)
+    except Exception as e:
+        print("WebSocket closed:", e)
+
