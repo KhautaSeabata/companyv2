@@ -1,46 +1,32 @@
+import os
 import asyncio
-from aiohttp import web
+import signal
+import http
+import websockets
 
-# Handler for normal HTTP requests (GET, HEAD)
-async def http_handler(request):
-    return web.Response(text="Hello, this is HTTP!")
-
-# Handler for WebSocket connections on /ws
-async def websocket_handler(request):
-    ws = web.WebSocketResponse()
-    await ws.prepare(request)
-
-    print("WebSocket connection opened")
-
+async def echo(ws):
     async for msg in ws:
-        if msg.type == web.WSMsgType.TEXT:
-            print(f"Received message: {msg.data}")
-            # Echo back or process the message
-            await ws.send_str(f"Echo: {msg.data}")
-        elif msg.type == web.WSMsgType.ERROR:
-            print(f"WebSocket connection closed with exception {ws.exception()}")
+        await ws.send(msg)
 
-    print("WebSocket connection closed")
-    return ws
+async def health_check(path, request_headers):
+    # Return 200 OK for /healthz so Render’s health check passes
+    if path == "/healthz":
+        return http.HTTPStatus.OK, [], b"OK\n"
 
-async def on_startup(app):
-    print("Server is starting...")
-
-async def on_shutdown(app):
-    print("Server is shutting down...")
-
-def main():
-    app = web.Application()
-    
-    # Routes
-    app.router.add_get('/', http_handler)
-    app.router.add_head('/', http_handler)  # Handle HEAD requests properly
-    app.router.add_get('/ws', websocket_handler)  # WebSocket endpoint
-
-    app.on_startup.append(on_startup)
-    app.on_shutdown.append(on_shutdown)
-
-    web.run_app(app, port=8765)
+async def main():
+    port = int(os.environ.get("PORT", 8765))          # Use $PORT, default 8765 for local dev
+    loop = asyncio.get_running_loop()
+    stop = loop.create_future()
+    loop.add_signal_handler(signal.SIGTERM, stop.set_result, None) 
+    # Serve on all interfaces (0.0.0.0) at the given port
+    async with websockets.serve(
+        echo,
+        host="0.0.0.0",
+        port=port,
+        process_request=health_check,               # health check on /healthz
+    ):
+        print(f"WebSocket server listening on port {port}")
+        await stop
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
