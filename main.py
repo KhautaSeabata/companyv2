@@ -1,41 +1,50 @@
 import os
 import asyncio
 import time
+import json
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+import websockets
 
 app = FastAPI()
 
-# Serve static files (e.g. index.html, style.css) under /static path
+# Serve static files (e.g., index.html, style.css)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Serve the index.html on GET / and respond properly to HEAD /
+# Serve index.html for GET and HEAD requests
 @app.api_route("/", methods=["GET", "HEAD"])
 async def get_index(request: Request):
     if request.method == "HEAD":
-        # Return empty response for HEAD requests (status 200 OK)
         return ""
-    # On GET, serve the index.html file
     return FileResponse("static/index.html")
 
-# WebSocket endpoint for realtime data streaming
+# WebSocket endpoint to stream live tick data
 @app.websocket("/ws/{index}")
 async def websocket_endpoint(websocket: WebSocket, index: str):
     await websocket.accept()
-    try:
-        while True:
-            # Simulate price tick with current epoch time and fixed quote
-            await websocket.send_json({
-                "tick": {
-                    "epoch": int(time.time()),
-                    "quote": 123.45  # Replace with your real data source
-                }
-            })
-            await asyncio.sleep(1)
-    except Exception as e:
-        print("WebSocket connection closed:", e)
+    deriv_url = "wss://ws.deriv.com/websockets/v3?app_id=1089"
 
+    try:
+        async with websockets.connect(deriv_url) as deriv_ws:
+            # Subscribe to live ticks for the given index (e.g., R_75)
+            await deriv_ws.send(json.dumps({
+                "ticks": index,
+                "subscribe": 1
+            }))
+
+            while True:
+                response = await deriv_ws.recv()
+                data = json.loads(response)
+
+                # Forward tick data to frontend
+                if "tick" in data:
+                    await websocket.send_json(data)
+    except Exception as e:
+        print("WebSocket connection error:", e)
+        await websocket.close()
+
+# Run the app
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
