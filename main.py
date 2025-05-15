@@ -1,5 +1,6 @@
 import os
 import asyncio
+import time
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -23,11 +24,10 @@ async def websocket_endpoint(websocket: WebSocket, index: str):
             # Simulate price ticks (replace with real logic)
             await websocket.send_json({
                 "tick": {
-                    "epoch": int(asyncio.time.time()),
+                    "epoch": int(time.time()),
                     "quote": 123.45  # Replace with real-time quote
                 }
             })
             await asyncio.sleep(1)
     except Exception as e:
         print("WebSocket closed:", e)
-
