@@ -2,7 +2,7 @@ import os
 import asyncio
 import time
 import json
-from fastapi import FastAPI, WebSocket, Request
+from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import websockets
@@ -19,32 +19,41 @@ async def get_index(request: Request):
         return ""
     return FileResponse("static/index.html")
 
-# WebSocket endpoint to stream live tick data
+# WebSocket endpoint
 @app.websocket("/ws/{index}")
 async def websocket_endpoint(websocket: WebSocket, index: str):
     await websocket.accept()
-    deriv_url = "wss://ws.deriv.com/websockets/v3?app_id=1089"
+    print(f"Client connected for index: {index}")
 
     try:
-        async with websockets.connect(deriv_url) as deriv_ws:
-            # Subscribe to live ticks for the given index (e.g., R_75)
-            await deriv_ws.send(json.dumps({
-                "ticks": index,
-                "subscribe": 1
-            }))
+        while True:
+            try:
+                # Connect to Deriv WebSocket API
+                async with websockets.connect("wss://ws.deriv.com/websockets/v3?app_id=1089") as deriv_ws:
+                    await deriv_ws.send(json.dumps({
+                        "ticks": index,
+                        "subscribe": 1
+                    }))
 
-            while True:
-                response = await deriv_ws.recv()
-                data = json.loads(response)
+                    while True:
+                        msg = await deriv_ws.recv()
+                        data = json.loads(msg)
 
-                # Forward tick data to frontend
-                if "tick" in data:
-                    await websocket.send_json(data)
+                        # Send to frontend only if tick data exists
+                        if "tick" in data:
+                            await websocket.send_json(data)
+
+            except (websockets.ConnectionClosed, websockets.WebSocketException, asyncio.TimeoutError) as e:
+                print(f"[Deriv WS Error] {e}, reconnecting in 3s...")
+                await asyncio.sleep(3)  # Wait and reconnect
+
+    except WebSocketDisconnect:
+        print(f"Client disconnected from index: {index}")
     except Exception as e:
-        print("WebSocket connection error:", e)
+        print(f"[App Error] {e}")
         await websocket.close()
 
-# Run the app
+# Run locally or on Render
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
