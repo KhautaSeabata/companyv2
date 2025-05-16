@@ -1,38 +1,26 @@
 body {
   margin: 0;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   background-color: #121212;
-  color: #eee;
-  height: 100vh;
+  color: #fff;
+  font-family: sans-serif;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  padding: 20px;
 }
 
-.app-header {
-  background: linear-gradient(90deg, #00bfa5, #1de9b6);
-  color: #000;
-  font-weight: 600;
-  padding: 14px 20px;
-  font-size: 1.1rem;
+h1 {
+  color: #00e676;
 }
 
-.app-main {
-  flex-grow: 1;
-  padding: 10px;
-  background: #1e1e1e;
+#chart {
+  width: 100%;
+  max-width: 800px;
+  height: 400px;
 }
 
-.chart-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 14px;
-}
-
-canvas {
-  width: 100% !important;
-  height: 240px !important;
-  background: #222;
-  border-radius: 12px;
-  padding: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+.price-label {
+  margin-top: 12px;
+  font-size: 1.2rem;
+  color: #00ff95;
 }
