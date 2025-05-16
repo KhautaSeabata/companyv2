@@ -2,119 +2,36 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Real-Time Candlestick Chart</title>
-  <link rel="stylesheet" href="/static/style.css"/>
+  <title>Volatility MT5</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
+  <script src="/static/chart.js" defer></script>
+  <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <div class="app-header">
-    <h1>📈 Real-Time Chart</h1>
-    <select id="timeframe-select">
-      <option value="tick">Tick</option>
-      <option value="60">1 Min</option>
-      <option value="120">2 Min</option>
-      <option value="180">3 Min</option>
-      <option value="240">4 Min</option>
-      <option value="300">5 Min</option>
+  <header class="app-header">
+    <div class="title">MT5 Web App</div>
+    <select id="index-select">
+      <option value="Vix10">Vix10</option>
+      <option value="Vix25">Vix25</option>
+      <option value="Vix75" selected>Vix75</option>
+      <option value="Vix100">Vix100</option>
     </select>
-  </div>
+    <select id="tf-select">
+      <option value="tick">Tick</option>
+      <option value="1" selected>1 min</option>
+      <option value="2">2 min</option>
+      <option value="3">3 min</option>
+      <option value="4">4 min</option>
+      <option value="5">5 min</option>
+    </select>
+    <div class="connection-status" id="connection-status">Connecting...</div>
+  </header>
 
-  <div class="chart-container">
-    <canvas id="chart"></canvas>
-  </div>
-  <div id="messages"></div>
-
-  <script>
-    const ctx = document.getElementById("chart").getContext("2d");
-    const chart = new Chart(ctx, {
-      type: "line",
-      data: {
-        labels: [],
-        datasets: [{
-          label: "Price",
-          data: [],
-          borderColor: "#00bfa5",
-          backgroundColor: "rgba(0, 191, 165, 0.1)",
-          fill: true,
-          tension: 0.2,
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          x: {
-            type: "category",
-            title: { display: true, text: "Time" }
-          },
-          y: {
-            beginAtZero: false,
-            title: { display: true, text: "Price" }
-          }
-        },
-        plugins: {
-          zoom: {
-            pan: {
-              enabled: true,
-              mode: 'x',
-              modifierKey: 'ctrl'  // Hold ctrl to pan
-            },
-            zoom: {
-              wheel: {
-                enabled: true
-              },
-              pinch: {
-                enabled: true
-              },
-              mode: 'x'
-            }
-          }
-        }
-      }
-    });
-
-    let socket;
-    let timeframe = "tick";
-
-    function connectSocket() {
-      if (socket) socket.close();
-
-      socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/vix75?timeframe=${timeframe}`);
-
-      socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        if (data.tick) {
-          const time = new Date(data.tick.epoch * 1000).toLocaleTimeString();
-          const price = data.tick.quote;
-
-          chart.data.labels.push(time);
-          chart.data.datasets[0].data.push(price);
-
-          document.getElementById("messages").textContent = `Last price: ${price}`;
-        }
-
-        if (data.candles) {
-          chart.data.labels = data.candles.map(c => new Date(c.timestamp * 1000).toLocaleTimeString());
-          chart.data.datasets[0].data = data.candles.map(c => c.close);
-          document.getElementById("messages").textContent = `Candles: ${data.candles.length}`;
-        }
-
-        chart.update("none");
-      };
-    }
-
-    document.getElementById("timeframe-select").addEventListener("change", (e) => {
-      timeframe = e.target.value;
-      chart.resetZoom();
-      chart.data.labels = [];
-      chart.data.datasets[0].data = [];
-      connectSocket();
-    });
-
-    connectSocket();
-  </script>
+  <main class="app-main">
+    <div class="chart-wrapper">
+      <canvas id="chart"></canvas>
+    </div>
+  </main>
 </body>
 </html>
