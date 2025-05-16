@@ -1,61 +1,83 @@
-import asyncio
-import json
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-import httpx
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>VIX Chart</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="title">Live Chart</div>
+  </header>
 
-app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
+  <main class="app-main">
+    <div class="chart-grid">
+      <canvas id="chartCanvas"></canvas>
+    </div>
+  </main>
 
-@app.get("/")
-async def root():
-    return FileResponse("static/index.html")
+  <script>
+    const path = window.location.pathname;
+    const symbol = path.replace("/", "");
+    const canvas = document.getElementById("chartCanvas").getContext("2d");
 
-FIREBASE_URL = "https://data-364f1-default-rtdb.firebaseio.com"
+    const chart = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [{
+          label: symbol,
+          data: [],
+          borderColor: "#1de9b6",
+          backgroundColor: "rgba(29, 233, 182, 0.1)",
+          borderWidth: 2,
+          tension: 0.25,
+          pointRadius: 0,
+          fill: true
+        }]
+      },
+      options: {
+        responsive: true,
+        animation: false,
+        scales: {
+          x: {
+            ticks: { color: "#aaa", font: { size: 10 } },
+            grid: { color: "#333" }
+          },
+          y: {
+            ticks: { color: "#aaa", callback: val => val.toFixed(2) },
+            grid: { color: "#333" }
+          }
+        },
+        plugins: {
+          legend: {
+            labels: { color: "#0f0", font: { size: 12 } }
+          }
+        }
+      }
+    });
 
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
+    const ws = new WebSocket(
+      `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${symbol}`
+    );
 
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      const time = new Date(data.tick.epoch * 1000).toLocaleTimeString();
+      const price = data.tick.quote;
 
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+      chart.data.labels.push(time);
+      chart.data.datasets[0].data.push(price);
 
-    async def send_message(self, websocket: WebSocket, message: str):
-        await websocket.send_text(message)
+      if (chart.data.labels.length > 60) {
+        chart.data.labels.shift();
+        chart.data.datasets[0].data.shift();
+      }
 
-manager = ConnectionManager()
-
-async def get_latest_tick(symbol: str):
-    async with httpx.AsyncClient() as client:
-        url = f"{FIREBASE_URL}/{symbol}.json"
-        resp = await client.get(url)
-        resp.raise_for_status()
-        data = resp.json()
-        if not data:
-            return None
-        return max(data.values(), key=lambda x: x["timestamp"])
-
-@app.websocket("/ws/{symbol}")
-async def websocket_endpoint(websocket: WebSocket, symbol: str):
-    await manager.connect(websocket)
-    try:
-        while True:
-            tick = await get_latest_tick(symbol)
-            if tick:
-                message = {
-                    "symbol": symbol,
-                    "tick": {
-                        "quote": tick["price"],
-                        "epoch": tick["timestamp"],
-                        "time": tick["time"],
-                    }
-                }
-                await manager.send_message(websocket, json.dumps(message))
-            await asyncio.sleep(1)
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
+      chart.update();
+    };
+  </script>
+</body>
+</html>
