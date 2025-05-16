@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>VIX Chart</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="title">Live Chart</div>
+  </header>
+
+  <main class="app-main">
+    <div class="chart-grid">
+      <canvas id="chartCanvas"></canvas>
+    </div>
+  </main>
+
+  <script>
+    const path = window.location.pathname;
+    const symbol = path.replace("/", "");
+    const canvas = document.getElementById("chartCanvas").getContext("2d");
+
+    const chart = new Chart(canvas, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [{
+          label: symbol,
+          data: [],
+          borderColor: "#1de9b6",
+          backgroundColor: "rgba(29, 233, 182, 0.1)",
+          borderWidth: 2,
+          tension: 0.25,
+          pointRadius: 0,
+          fill: true
+        }]
+      },
+      options: {
+        responsive: true,
+        animation: false,
+        scales: {
+          x: {
+            ticks: { color: "#aaa", font: { size: 10 } },
+            grid: { color: "#333" }
+          },
+          y: {
+            ticks: { color: "#aaa", callback: val => val.toFixed(2) },
+            grid: { color: "#333" }
+          }
+        },
+        plugins: {
+          legend: {
+            labels: { color: "#0f0", font: { size: 12 } }
+          }
+        }
+      }
+    });
+
+    const ws = new WebSocket(
+      `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${symbol}`
+    );
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      const time = new Date(data.tick.epoch * 1000).toLocaleTimeString();
+      const price = data.tick.quote;
+
+      chart.data.labels.push(time);
+      chart.data.datasets[0].data.push(price);
+
+      if (chart.data.labels.length > 60) {
+        chart.data.labels.shift();
+        chart.data.datasets[0].data.shift();
+      }
+
+      chart.update();
+    };
+  </script>
+</body>
+</html>
