@@ -1,16 +1,36 @@
-import asyncio
-import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
+import asyncio
 import httpx
+import json
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
-async def root():
-    return FileResponse("static/index.html")
+async def index():
+    return HTMLResponse("<h2>Choose a chart:</h2><ul>" +
+                        "<li><a href='/vix10'>Vix10</a></li>" +
+                        "<li><a href='/vix25'>Vix25</a></li>" +
+                        "<li><a href='/vix75'>Vix75</a></li>" +
+                        "<li><a href='/vix100'>Vix100</a></li></ul>")
+
+@app.get("/vix10")
+async def vix10():
+    return FileResponse("static/chart.html")
+
+@app.get("/vix25")
+async def vix25():
+    return FileResponse("static/chart.html")
+
+@app.get("/vix75")
+async def vix75():
+    return FileResponse("static/chart.html")
+
+@app.get("/vix100")
+async def vix100():
+    return FileResponse("static/chart.html")
 
 FIREBASE_URL = "https://data-364f1-default-rtdb.firebaseio.com"
 
@@ -34,7 +54,6 @@ async def get_latest_tick(symbol: str):
     async with httpx.AsyncClient() as client:
         url = f"{FIREBASE_URL}/{symbol}.json"
         resp = await client.get(url)
-        resp.raise_for_status()
         data = resp.json()
         if not data:
             return None
