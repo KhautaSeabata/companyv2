@@ -1,78 +1,178 @@
-import asyncio
-import json
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-import httpx
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Volatility Index - MT5 Style</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.0"></script>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="title">Volatility Index</div>
+    <div class="index-name" id="index">R_75</div>
+    <div class="connection-status" id="connection-status">Connecting...</div>
+    <button id="btn-reconnect" hidden>⟳</button>
+  </header>
 
-app = FastAPI()
+  <main class="app-main">
+    <div class="chart-wrapper">
+      <canvas id="chart"></canvas>
+    </div>
+    <div id="messages" class="messages"></div>
+  </main>
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+  <script>
+    const index = "R_75";
+    const connStatusEl = document.getElementById("connection-status");
+    const btnReconnect = document.getElementById("btn-reconnect");
+    const messages = document.getElementById("messages");
 
-@app.get("/")
-async def root():
-    return FileResponse("static/index.html")
+    let socket;
+    let chart;
+    let autoScroll = true;
+    let resumeTimeout;
 
-FIREBASE_DB_URL = "https://data-364f1-default-rtdb.firebaseio.com/Vix75.json"
+    function createSocket() {
+      socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${index}`);
 
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
+      socket.onopen = () => {
+        connStatusEl.textContent = "Connected";
+        connStatusEl.classList.remove("disconnected");
+        btnReconnect.hidden = true;
+      };
 
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
+      socket.onclose = () => {
+        connStatusEl.textContent = "Disconnected";
+        connStatusEl.classList.add("disconnected");
+        btnReconnect.hidden = false;
+      };
 
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+      socket.onerror = () => {
+        connStatusEl.textContent = "Error";
+        connStatusEl.classList.add("disconnected");
+        btnReconnect.hidden = false;
+      };
 
-    async def send_message(self, websocket: WebSocket, message: str):
-        await websocket.send_text(message)
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
 
-manager = ConnectionManager()
+        if (data.history) {
+          const labels = [];
+          const prices = [];
+          data.history.forEach(tick => {
+            labels.push(new Date(tick.epoch * 1000).toLocaleTimeString());
+            prices.push(tick.quote);
+          });
+          chart.data.labels = labels;
+          chart.data.datasets[0].data = prices;
+          chart.update();
+        }
 
-async def fetch_all_ticks():
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(FIREBASE_DB_URL)
-        resp.raise_for_status()
-        return resp.json()
+        if (data.tick) {
+          const time = new Date(data.tick.epoch * 1000).toLocaleTimeString();
+          const price = data.tick.quote;
 
-@app.websocket("/ws/{index}")
-async def websocket_endpoint(websocket: WebSocket, index: str):
-    await manager.connect(websocket)
-    try:
-        # Send historical data first
-        all_ticks = await fetch_all_ticks()
-        sorted_ticks = sorted(all_ticks.values(), key=lambda x: x["timestamp"])
-        recent_ticks = sorted_ticks[-200:]
+          chart.data.labels.push(time);
+          chart.data.datasets[0].data.push(price);
 
-        history = [
-            {
-                "quote": tick["price"],
-                "epoch": tick["timestamp"],
-                "time": tick["time"]
+          if (chart.data.labels.length > 200) {
+            chart.data.labels.shift();
+            chart.data.datasets[0].data.shift();
+          }
+
+          if (autoScroll) {
+            chart.options.plugins.zoom.pan.enabled = false;
+            chart.options.scales.x.min = undefined;
+            chart.options.scales.x.max = undefined;
+          }
+
+          chart.update();
+          messages.textContent = `Last price: ${price}`;
+        }
+      };
+    }
+
+    function initChart() {
+      const ctx = document.getElementById('chart').getContext('2d');
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Price',
+            data: [],
+            borderColor: '#1de9b6',
+            backgroundColor: 'rgba(29, 233, 182, 0.1)',
+            borderWidth: 2,
+            tension: 0.25,
+            pointRadius: 0,
+            fill: true,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          scales: {
+            x: {
+              ticks: { color: '#aaa', maxRotation: 0 },
+              grid: { color: '#2a2a2a' },
+            },
+            y: {
+              ticks: { color: '#aaa' },
+              grid: { color: '#2a2a2a', borderDash: [2, 4] }
             }
-            for tick in recent_ticks
-        ]
-        await manager.send_message(websocket, json.dumps({"history": history}))
-
-        # Stream live data
-        while True:
-            latest_tick = sorted_ticks[-1] if sorted_ticks else None
-            new_ticks = await fetch_all_ticks()
-            new_sorted = sorted(new_ticks.values(), key=lambda x: x["timestamp"])
-            if latest_tick and new_sorted[-1]["timestamp"] != latest_tick["timestamp"]:
-                latest_tick = new_sorted[-1]
-                message = {
-                    "tick": {
-                        "quote": latest_tick["price"],
-                        "epoch": latest_tick["timestamp"],
-                        "time": latest_tick["time"]
-                    }
+          },
+          plugins: {
+            legend: {
+              labels: {
+                color: '#00bfa5',
+                font: { size: 14, weight: 'bold' }
+              }
+            },
+            zoom: {
+              pan: {
+                enabled: true,
+                mode: 'x',
+                onPan: () => {
+                  autoScroll = false;
+                  clearTimeout(resumeTimeout);
+                  resumeTimeout = setTimeout(() => {
+                    autoScroll = true;
+                  }, 10000);
                 }
-                await manager.send_message(websocket, json.dumps(message))
-                sorted_ticks = new_sorted
-            await asyncio.sleep(1)
+              },
+              zoom: { wheel: { enabled: false } }
+            },
+            tooltip: {
+              backgroundColor: '#222',
+              titleColor: '#0f0',
+              bodyColor: '#0f0',
+              callbacks: {
+                label: ctx => `Price: ${ctx.formattedValue}`
+              }
+            }
+          }
+        },
+        plugins: [Chart.Zoom]
+      });
+    }
 
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
+    btnReconnect.addEventListener('click', () => {
+      if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) return;
+      connStatusEl.textContent = "Reconnecting...";
+      connStatusEl.classList.remove("disconnected");
+      btnReconnect.hidden = true;
+      createSocket();
+    });
+
+    window.onload = () => {
+      initChart();
+      createSocket();
+    };
+  </script>
+</body>
+</html>
+
