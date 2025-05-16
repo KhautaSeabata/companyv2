@@ -2,15 +2,15 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>VIX25 Live Chart</title>
+  <title>VIX25 Live</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="/static/style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h2>VIX25 Live Tick Chart</h2>
+  <h2>VIX25 - Live Ticks</h2>
   <canvas id="chart"></canvas>
-  <div class="price" id="price"></div>
+  <div class="price" id="price">Latest Price: --</div>
 
   <script>
     const ctx = document.getElementById('chart').getContext('2d');
@@ -19,14 +19,14 @@
       data: {
         labels: [],
         datasets: [{
-          label: 'VIX25',
+          label: 'VIX25 Price',
           data: [],
           borderColor: '#00e676',
-          backgroundColor: 'rgba(0, 230, 118, 0.1)',
+          backgroundColor: 'rgba(0, 230, 118, 0.2)',
           tension: 0.3,
+          fill: true,
           borderWidth: 2,
-          pointRadius: 0,
-          fill: true
+          pointRadius: 0
         }]
       },
       options: {
@@ -48,18 +48,14 @@
       }
     });
 
-    const ws = new WebSocket(
-      `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/vix25`
-    );
+    const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/vix25`);
 
     ws.onmessage = (event) => {
       const tick = JSON.parse(event.data);
-      const time = new Date(tick.epoch * 1000).toLocaleTimeString();
+      const label = new Date(tick.epoch * 1000).toLocaleTimeString();
       const price = tick.quote;
 
-      document.getElementById("price").textContent = `Latest Price: ${price}`;
-
-      chart.data.labels.push(time);
+      chart.data.labels.push(label);
       chart.data.datasets[0].data.push(price);
 
       if (chart.data.labels.length > 60) {
@@ -68,6 +64,7 @@
       }
 
       chart.update();
+      document.getElementById('price').textContent = `Latest Price: ${price}`;
     };
   </script>
 </body>
