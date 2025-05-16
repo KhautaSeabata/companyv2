@@ -1,60 +1,71 @@
-import os
+# main.py
 import asyncio
-import time
 import json
-from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-import websockets
+import requests
+import sseclient
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from analyze import Analyzer
 
 app = FastAPI()
 
-# Serve static files (e.g., index.html, style.css)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Allow all origins (adjust as needed)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Serve index.html for GET and HEAD requests
-@app.api_route("/", methods=["GET", "HEAD"])
-async def get_index(request: Request):
-    if request.method == "HEAD":
-        return ""
-    return FileResponse("static/index.html")
+FIREBASE_URL = "https://data-364f1-default-rtdb.firebaseio.com/ticks.json"
 
-# WebSocket endpoint
-@app.websocket("/ws/{index}")
-async def websocket_endpoint(websocket: WebSocket, index: str):
+
+def listen_to_firebase():
+    headers = {'Accept': 'text/event-stream'}
+    params = {"print": "event"}
+    response = requests.get(FIREBASE_URL, stream=True, headers=headers, params=params)
+    return sseclient.SSEClient(response)
+
+
+@app.websocket("/ws/{index_name}")
+async def websocket_endpoint(websocket: WebSocket, index_name: str):
     await websocket.accept()
-    print(f"Client connected for index: {index}")
+    seen_ids = set()
+    analyzer = Analyzer()
 
     try:
-        while True:
-            try:
-                # Connect to Deriv WebSocket API
-                async with websockets.connect("wss://ws.deriv.com/websockets/v3?app_id=1089") as deriv_ws:
-                    await deriv_ws.send(json.dumps({
-                        "ticks": index,
-                        "subscribe": 1
-                    }))
+        for event in listen_to_firebase():
+            if event.event == 'put':
+                data = json.loads(event.data)
+                if not data.get('data'):
+                    continue
 
-                    while True:
-                        msg = await deriv_ws.recv()
-                        data = json.loads(msg)
+                ticks_data = data["data"] if isinstance(data["data"], dict) else {}
+                for tick_id, tick in ticks_data.items():
+                    if tick_id in seen_ids:
+                        continue
+                    seen_ids.add(tick_id)
 
-                        # Send to frontend only if tick data exists
-                        if "tick" in data:
-                            await websocket.send_json(data)
+                    price = tick.get("price")
+                    timestamp = tick.get("timestamp")
 
-            except (websockets.ConnectionClosed, websockets.WebSocketException, asyncio.TimeoutError) as e:
-                print(f"[Deriv WS Error] {e}, reconnecting in 3s...")
-                await asyncio.sleep(3)  # Wait and reconnect
+                    if price is None or timestamp is None:
+                        continue
+
+                    signal = analyzer.analyze(price, timestamp)
+
+                    await websocket.send_json({
+                        "tick": {
+                            "quote": price,
+                            "epoch": timestamp
+                        },
+                        "signal": signal
+                    })
+
+            await asyncio.sleep(0.1)
 
     except WebSocketDisconnect:
-        print(f"Client disconnected from index: {index}")
+        print("WebSocket disconnected")
     except Exception as e:
-        print(f"[App Error] {e}")
-        await websocket.close()
-
-# Run locally or on Render
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+        print("Error in WebSocket or Firebase stream:", e)
