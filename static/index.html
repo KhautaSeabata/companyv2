@@ -1,116 +1,73 @@
 <!DOCTYPE html>
-<html lang="en" >
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Volatility Index - MT5 Style</title>
+  <title>Vix75 Historical Chart</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.0"></script>
   <link rel="stylesheet" href="/static/style.css" />
-  <style>
-    /* Allow horizontal scroll for chart */
-    .chart-wrapper {
-      overflow-x: auto;
-      white-space: nowrap;
-    }
-    canvas {
-      min-width: 1200px !important;
-      max-height: 450px !important;
-    }
-  </style>
 </head>
 <body>
   <header class="app-header">
-    <div class="title">Volatility Index</div>
-    <select id="index-select">
-      <option value="Vix10">Vix10</option>
-      <option value="Vix25">Vix25</option>
-      <option value="Vix75" selected>Vix75</option>
-      <option value="Vix100">Vix100</option>
-    </select>
-    <select id="tf-select">
-      <option value="tick">Tick</option>
-      <option value="1" selected>1 min</option>
-      <option value="2">2 min</option>
-      <option value="3">3 min</option>
-      <option value="4">4 min</option>
-      <option value="5">5 min</option>
-    </select>
-    <div class="connection-status" id="connection-status">Connecting...</div>
-    <button id="btn-reconnect" title="Reconnect WebSocket" hidden>⟳</button>
+    <div class="title">Vix75 Historical Chart</div>
   </header>
 
   <main class="app-main">
     <div class="chart-wrapper">
       <canvas id="chart"></canvas>
     </div>
-
-    <div id="messages" class="messages"></div>
   </main>
 
   <script>
-    const connStatusEl = document.getElementById("connection-status");
-    const btnReconnect = document.getElementById("btn-reconnect");
-    const messages = document.getElementById("messages");
-    const indexSelect = document.getElementById("index-select");
-    const tfSelect = document.getElementById("tf-select");
+    const ctx = document.getElementById('chart').getContext('2d');
 
-    let socket;
-    let chart;
+    const chart = new Chart(ctx, {
+      type: 'candlestick',
+      data: { datasets: [{ label: 'Vix75', data: [] }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          zoom: {
+            pan: { enabled: true, mode: 'x' },
+            zoom: { wheel: { enabled: true }, mode: 'x' }
+          },
+          legend: { display: false }
+        },
+        scales: {
+          x: {
+            type: 'time',
+            time: { unit: 'minute', tooltipFormat: 'HH:mm' },
+            ticks: { color: '#ccc' },
+            grid: { color: '#333' }
+          },
+          y: {
+            ticks: { color: '#ccc' },
+            grid: { color: '#333' }
+          }
+        }
+      },
+      plugins: [Chart.registry.getPlugin('zoom')]
+    });
 
-    // Helper: format timestamp (seconds) to HH:mm
-    function formatTime(ts) {
-      return new Date(ts * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-    }
+    async function loadData() {
+      const res = await fetch('/data');
+      const candles = await res.json();
 
-    // Convert candles for Chart.js candlestick plugin
-    function convertCandlesToChartData(candles) {
-      return candles.map(c => ({
-        x: c.timestamp * 1000,
+      chart.data.datasets[0].data = candles.map(c => ({
+        x: c.time,
         o: c.open,
         h: c.high,
         l: c.low,
         c: c.close
       }));
+
+      chart.update();
+      chart.scrollbar && chart.scrollbar.update();
     }
 
-    function createSocket() {
-      const index = indexSelect.value;
-      const tf = tfSelect.value;
-
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.close();
-      }
-
-      socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${index}/${tf}`);
-
-      socket.onopen = () => {
-        connStatusEl.textContent = "Connected";
-        connStatusEl.classList.remove("disconnected");
-        btnReconnect.hidden = true;
-        messages.textContent = `Subscribed to ${index} timeframe ${tf}`;
-      };
-
-      socket.onclose = () => {
-        connStatusEl.textContent = "Disconnected";
-        connStatusEl.classList.add("disconnected");
-        btnReconnect.hidden = false;
-      };
-
-      socket.onerror = (e) => {
-        connStatusEl.textContent = "Error";
-        connStatusEl.classList.add("disconnected");
-        btnReconnect.hidden = false;
-      };
-
-      socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        if (data.candles) {
-          // Initial batch of candles
-          const candles = convertCandlesToChartData(data.candles);
-          chart.data.datasets[0].data = candles;
-          chart.update();
-
-          // Auto scroll to right (latest candle)
-          const
+    window.onload = loadData;
+  </script>
+</body>
+</html>
