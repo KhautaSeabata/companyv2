@@ -1,71 +1,81 @@
-# main.py
 import asyncio
 import json
-import requests
-import sseclient
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from analyze import Analyzer
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import httpx
 
 app = FastAPI()
 
-# Allow all origins (adjust as needed)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Serve static files from ./static folder at /static route
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-FIREBASE_URL = "https://data-364f1-default-rtdb.firebaseio.com/ticks.json"
+# Serve index.html at root
+@app.get("/")
+async def root():
+    return FileResponse("static/index.html")
 
 
-def listen_to_firebase():
-    headers = {'Accept': 'text/event-stream'}
-    params = {"print": "event"}
-    response = requests.get(FIREBASE_URL, stream=True, headers=headers, params=params)
-    return sseclient.SSEClient(response)
+FIREBASE_DB_URL = "https://data-364f1-default-rtdb.firebaseio.com/ticks.json"
 
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
 
-@app.websocket("/ws/{index_name}")
-async def websocket_endpoint(websocket: WebSocket, index_name: str):
-    await websocket.accept()
-    seen_ids = set()
-    analyzer = Analyzer()
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
 
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def send_message(self, websocket: WebSocket, message: str):
+        await websocket.send_text(message)
+
+manager = ConnectionManager()
+
+async def get_latest_tick():
+    """Fetch latest tick from Firebase Realtime Database."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(FIREBASE_DB_URL)
+        resp.raise_for_status()
+        data = resp.json()
+        if not data:
+            return None
+        # data is dict of ticks keyed by random ids, get the one with max timestamp
+        latest_tick = max(data.values(), key=lambda x: x["timestamp"])
+        return latest_tick
+
+@app.websocket("/ws/{index}")
+async def websocket_endpoint(websocket: WebSocket, index: str):
+    await manager.connect(websocket)
     try:
-        for event in listen_to_firebase():
-            if event.event == 'put':
-                data = json.loads(event.data)
-                if not data.get('data'):
-                    continue
+        while True:
+            # fetch latest tick from Firebase every second
+            tick = await get_latest_tick()
+            if tick is None:
+                await asyncio.sleep(1)
+                continue
 
-                ticks_data = data["data"] if isinstance(data["data"], dict) else {}
-                for tick_id, tick in ticks_data.items():
-                    if tick_id in seen_ids:
-                        continue
-                    seen_ids.add(tick_id)
+            # Prepare message JSON to send
+            message = {
+                "tick": {
+                    "quote": tick["price"],
+                    "epoch": tick["timestamp"],
+                    "time": tick["time"],
+                },
+                # Example: no signal here, but you can add signal data
+                # "signal": {
+                #     "signal": "buy",
+                #     "entry": tick["price"],
+                #     "tp": tick["price"] + 10,
+                #     "sl": tick["price"] - 10,
+                #     "timestamp": tick["timestamp"]
+                # }
+            }
 
-                    price = tick.get("price")
-                    timestamp = tick.get("timestamp")
-
-                    if price is None or timestamp is None:
-                        continue
-
-                    signal = analyzer.analyze(price, timestamp)
-
-                    await websocket.send_json({
-                        "tick": {
-                            "quote": price,
-                            "epoch": timestamp
-                        },
-                        "signal": signal
-                    })
-
-            await asyncio.sleep(0.1)
+            await manager.send_message(websocket, json.dumps(message))
+            await asyncio.sleep(1)
 
     except WebSocketDisconnect:
-        print("WebSocket disconnected")
-    except Exception as e:
-        print("Error in WebSocket or Firebase stream:", e)
+        manager.disconnect(websocket)
