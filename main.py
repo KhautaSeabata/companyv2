@@ -16,7 +16,7 @@ async def root():
     return FileResponse("static/index.html")
 
 
-FIREBASE_DB_URL = "https://data-364f1-default-rtdb.firebaseio.com/Volatility 10.json"
+FIREBASE_DB_URL = "https://data-364f1-default-rtdb.firebaseio.com/Vix75.json"
 
 class ConnectionManager:
     def __init__(self):
