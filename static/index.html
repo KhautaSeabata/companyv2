@@ -6,6 +6,7 @@
   <title>Real-Time Candlestick Chart</title>
   <link rel="stylesheet" href="/static/style.css"/>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
 </head>
 <body>
   <div class="app-header">
@@ -41,12 +42,34 @@
         }]
       },
       options: {
+        responsive: true,
+        maintainAspectRatio: false,
         scales: {
           x: {
-            ticks: { maxRotation: 45, minRotation: 45 }
+            type: "category",
+            title: { display: true, text: "Time" }
           },
           y: {
-            beginAtZero: false
+            beginAtZero: false,
+            title: { display: true, text: "Price" }
+          }
+        },
+        plugins: {
+          zoom: {
+            pan: {
+              enabled: true,
+              mode: 'x',
+              modifierKey: 'ctrl'  // Hold ctrl to pan
+            },
+            zoom: {
+              wheel: {
+                enabled: true
+              },
+              pinch: {
+                enabled: true
+              },
+              mode: 'x'
+            }
           }
         }
       }
@@ -66,13 +89,9 @@
         if (data.tick) {
           const time = new Date(data.tick.epoch * 1000).toLocaleTimeString();
           const price = data.tick.quote;
+
           chart.data.labels.push(time);
           chart.data.datasets[0].data.push(price);
-
-          if (chart.data.labels.length > 60) {
-            chart.data.labels.shift();
-            chart.data.datasets[0].data.shift();
-          }
 
           document.getElementById("messages").textContent = `Last price: ${price}`;
         }
@@ -83,13 +102,16 @@
           document.getElementById("messages").textContent = `Candles: ${data.candles.length}`;
         }
 
-        chart.update();
+        chart.update("none");
       };
     }
 
     document.getElementById("timeframe-select").addEventListener("change", (e) => {
       timeframe = e.target.value;
-      connectSocket();  // reconnect with new timeframe
+      chart.resetZoom();
+      chart.data.labels = [];
+      chart.data.datasets[0].data = [];
+      connectSocket();
     });
 
     connectSocket();
