@@ -7,14 +7,11 @@ import httpx
 
 app = FastAPI()
 
-# Serve static files from ./static folder at /static route
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Serve index.html at root
 @app.get("/")
 async def root():
     return FileResponse("static/index.html")
-
 
 FIREBASE_DB_URL = "https://data-364f1-default-rtdb.firebaseio.com/Vix75.json"
 
@@ -34,47 +31,47 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-async def get_latest_tick():
-    """Fetch latest tick from Firebase Realtime Database."""
+async def fetch_all_ticks():
     async with httpx.AsyncClient() as client:
         resp = await client.get(FIREBASE_DB_URL)
         resp.raise_for_status()
-        data = resp.json()
-        if not data:
-            return None
-        # data is dict of ticks keyed by random ids, get the one with max timestamp
-        latest_tick = max(data.values(), key=lambda x: x["timestamp"])
-        return latest_tick
+        return resp.json()
 
 @app.websocket("/ws/{index}")
 async def websocket_endpoint(websocket: WebSocket, index: str):
     await manager.connect(websocket)
     try:
-        while True:
-            # fetch latest tick from Firebase every second
-            tick = await get_latest_tick()
-            if tick is None:
-                await asyncio.sleep(1)
-                continue
+        # Send historical data first
+        all_ticks = await fetch_all_ticks()
+        sorted_ticks = sorted(all_ticks.values(), key=lambda x: x["timestamp"])
+        recent_ticks = sorted_ticks[-200:]
 
-            # Prepare message JSON to send
-            message = {
-                "tick": {
-                    "quote": tick["price"],
-                    "epoch": tick["timestamp"],
-                    "time": tick["time"],
-                },
-                # Example: no signal here, but you can add signal data
-                # "signal": {
-                #     "signal": "buy",
-                #     "entry": tick["price"],
-                #     "tp": tick["price"] + 10,
-                #     "sl": tick["price"] - 10,
-                #     "timestamp": tick["timestamp"]
-                # }
+        history = [
+            {
+                "quote": tick["price"],
+                "epoch": tick["timestamp"],
+                "time": tick["time"]
             }
+            for tick in recent_ticks
+        ]
+        await manager.send_message(websocket, json.dumps({"history": history}))
 
-            await manager.send_message(websocket, json.dumps(message))
+        # Stream live data
+        while True:
+            latest_tick = sorted_ticks[-1] if sorted_ticks else None
+            new_ticks = await fetch_all_ticks()
+            new_sorted = sorted(new_ticks.values(), key=lambda x: x["timestamp"])
+            if latest_tick and new_sorted[-1]["timestamp"] != latest_tick["timestamp"]:
+                latest_tick = new_sorted[-1]
+                message = {
+                    "tick": {
+                        "quote": latest_tick["price"],
+                        "epoch": latest_tick["timestamp"],
+                        "time": latest_tick["time"]
+                    }
+                }
+                await manager.send_message(websocket, json.dumps(message))
+                sorted_ticks = new_sorted
             await asyncio.sleep(1)
 
     except WebSocketDisconnect:
