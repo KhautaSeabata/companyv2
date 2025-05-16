@@ -1,81 +1,86 @@
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 import asyncio
 import json
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-import httpx
+import time
+from datetime import datetime
+from collections import defaultdict
 
 app = FastAPI()
 
-# Serve static files from ./static folder at /static route
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Serve index.html at root
+html_path = "static/index.html"
+
 @app.get("/")
-async def root():
-    return FileResponse("static/index.html")
+async def get():
+    with open(html_path, "r") as f:
+        html_content = f.read()
+    return HTMLResponse(content=html_content, status_code=200)
 
-
-FIREBASE_DB_URL = "https://data-364f1-default-rtdb.firebaseio.com/Vix75.json"
-
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-
-    async def send_message(self, websocket: WebSocket, message: str):
-        await websocket.send_text(message)
-
-manager = ConnectionManager()
-
+# Simulated tick stream (you should replace this with real data source)
 async def get_latest_tick():
-    """Fetch latest tick from Firebase Realtime Database."""
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(FIREBASE_DB_URL)
-        resp.raise_for_status()
-        data = resp.json()
-        if not data:
-            return None
-        # data is dict of ticks keyed by random ids, get the one with max timestamp
-        latest_tick = max(data.values(), key=lambda x: x["timestamp"])
-        return latest_tick
+    now = int(time.time())
+    price = 1000 + (now % 100) * 0.1  # Simulated price
+    return {
+        "price": round(price, 2),
+        "timestamp": now,
+        "time": datetime.utcfromtimestamp(now).strftime("%H:%M:%S")
+    }
+
+clients = set()
 
 @app.websocket("/ws/{index}")
 async def websocket_endpoint(websocket: WebSocket, index: str):
-    await manager.connect(websocket)
+    await websocket.accept()
+    clients.add(websocket)
+    ticks = []
+
     try:
         while True:
-            # fetch latest tick from Firebase every second
             tick = await get_latest_tick()
-            if tick is None:
-                await asyncio.sleep(1)
-                continue
+            ticks.append(tick)
 
-            # Prepare message JSON to send
-            message = {
-                "tick": {
-                    "quote": tick["price"],
-                    "epoch": tick["timestamp"],
-                    "time": tick["time"],
-                },
-                # Example: no signal here, but you can add signal data
-                # "signal": {
-                #     "signal": "buy",
-                #     "entry": tick["price"],
-                #     "tp": tick["price"] + 10,
-                #     "sl": tick["price"] - 10,
-                #     "timestamp": tick["timestamp"]
-                # }
-            }
+            # Extract timeframe from query params
+            params = websocket.query_params
+            timeframe = params.get("timeframe", "tick")
 
-            await manager.send_message(websocket, json.dumps(message))
+            if timeframe == "tick":
+                data = {
+                    "tick": {
+                        "quote": tick["price"],
+                        "epoch": tick["timestamp"],
+                        "time": tick["time"]
+                    }
+                }
+            else:
+                interval = int(timeframe)
+                candles = group_ticks_to_ohlc(ticks, interval)
+                data = {
+                    "candles": candles[-60:]  # Last 60 candles
+                }
+
+            await websocket.send_text(json.dumps(data))
             await asyncio.sleep(1)
 
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        clients.remove(websocket)
+
+def group_ticks_to_ohlc(ticks, interval_sec):
+    candles = {}
+    for tick in ticks:
+        key = tick["timestamp"] - (tick["timestamp"] % interval_sec)
+        if key not in candles:
+            candles[key] = {
+                "timestamp": key,
+                "open": tick["price"],
+                "high": tick["price"],
+                "low": tick["price"],
+                "close": tick["price"]
+            }
+        else:
+            candles[key]["high"] = max(candles[key]["high"], tick["price"])
+            candles[key]["low"] = min(candles[key]["low"], tick["price"])
+            candles[key]["close"] = tick["price"]
+    return [candles[k] for k in sorted(candles)]
