@@ -1,31 +1,30 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8" />
-  <title>VIX75 Live</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VIX25 Live Chart</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="/static/style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <h1>VIX75 Live Price</h1>
+  <h2>VIX25 Live Tick Chart</h2>
   <canvas id="chart"></canvas>
-  <div id="last-price" class="price-label"></div>
+  <div class="price" id="price"></div>
 
   <script>
-    const ctx = document.getElementById("chart").getContext("2d");
-
+    const ctx = document.getElementById('chart').getContext('2d');
     const chart = new Chart(ctx, {
-      type: "line",
+      type: 'line',
       data: {
         labels: [],
         datasets: [{
-          label: "Price",
+          label: 'VIX25',
           data: [],
-          borderColor: "#1de9b6",
-          backgroundColor: "rgba(29, 233, 182, 0.1)",
-          borderWidth: 2,
+          borderColor: '#00e676',
+          backgroundColor: 'rgba(0, 230, 118, 0.1)',
           tension: 0.3,
+          borderWidth: 2,
           pointRadius: 0,
           fill: true
         }]
@@ -34,25 +33,31 @@
         responsive: true,
         animation: false,
         scales: {
-          x: { ticks: { color: "#aaa" }, grid: { color: "#333" } },
-          y: { ticks: { color: "#aaa" }, grid: { color: "#333" } }
+          x: {
+            ticks: { color: '#aaa' },
+            grid: { color: '#333' }
+          },
+          y: {
+            ticks: { color: '#aaa' },
+            grid: { color: '#333' }
+          }
         },
         plugins: {
-          legend: { labels: { color: "#fff" } }
+          legend: { labels: { color: '#fff' } }
         }
       }
     });
 
     const ws = new WebSocket(
-      `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/vix75`
+      `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/vix25`
     );
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      const time = new Date(data.tick.epoch * 1000).toLocaleTimeString();
-      const price = data.tick.quote;
+      const tick = JSON.parse(event.data);
+      const time = new Date(tick.epoch * 1000).toLocaleTimeString();
+      const price = tick.quote;
 
-      document.getElementById("last-price").textContent = `Last Price: ${price}`;
+      document.getElementById("price").textContent = `Latest Price: ${price}`;
 
       chart.data.labels.push(time);
       chart.data.datasets[0].data.push(price);
