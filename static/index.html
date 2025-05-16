@@ -2,72 +2,63 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Vix75 Historical Chart</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.0"></script>
+  <title>Vix75 Candlestick Chart</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial"></script>
 </head>
 <body>
-  <header class="app-header">
-    <div class="title">Vix75 Historical Chart</div>
-  </header>
-
-  <main class="app-main">
-    <div class="chart-wrapper">
-      <canvas id="chart"></canvas>
-    </div>
+  <header class="header">📊 Vix75 Historical Candles</header>
+  <main class="chart-container">
+    <canvas id="candlestickChart"></canvas>
   </main>
 
   <script>
-    const ctx = document.getElementById('chart').getContext('2d');
-
-    const chart = new Chart(ctx, {
-      type: 'candlestick',
-      data: { datasets: [{ label: 'Vix75', data: [] }] },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          zoom: {
-            pan: { enabled: true, mode: 'x' },
-            zoom: { wheel: { enabled: true }, mode: 'x' }
-          },
-          legend: { display: false }
-        },
-        scales: {
-          x: {
-            type: 'time',
-            time: { unit: 'minute', tooltipFormat: 'HH:mm' },
-            ticks: { color: '#ccc' },
-            grid: { color: '#333' }
-          },
-          y: {
-            ticks: { color: '#ccc' },
-            grid: { color: '#333' }
-          }
-        }
-      },
-      plugins: [Chart.registry.getPlugin('zoom')]
-    });
+    const ctx = document.getElementById("candlestickChart").getContext("2d");
 
     async function loadData() {
-      const res = await fetch('/data');
-      const candles = await res.json();
+      const res = await fetch("/api/vix75");
+      const data = await res.json();
 
-      chart.data.datasets[0].data = candles.map(c => ({
-        x: c.time,
-        o: c.open,
-        h: c.high,
-        l: c.low,
-        c: c.close
-      }));
-
-      chart.update();
-      chart.scrollbar && chart.scrollbar.update();
+      const chart = new Chart(ctx, {
+        type: "candlestick",
+        data: {
+          datasets: [{
+            label: "Vix75",
+            data: data,
+            borderColor: "#00e676",
+            borderWidth: 1,
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            x: {
+              type: "time",
+              time: {
+                unit: "minute"
+              },
+              ticks: {
+                color: "#ccc"
+              }
+            },
+            y: {
+              ticks: {
+                color: "#ccc"
+              }
+            }
+          },
+          plugins: {
+            legend: {
+              labels: { color: "#0f0" }
+            }
+          }
+        }
+      });
     }
 
-    window.onload = loadData;
+    loadData();
   </script>
 </body>
 </html>
