@@ -1,39 +1,31 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>VIX Chart</title>
+  <title>VIX75 Live</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="/static/style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <header class="app-header">
-    <div class="title">Live Chart</div>
-  </header>
-
-  <main class="app-main">
-    <div class="chart-grid">
-      <canvas id="chartCanvas"></canvas>
-    </div>
-  </main>
+  <h1>VIX75 Live Price</h1>
+  <canvas id="chart"></canvas>
+  <div id="last-price" class="price-label"></div>
 
   <script>
-    const path = window.location.pathname;
-    const symbol = path.replace("/", "");
-    const canvas = document.getElementById("chartCanvas").getContext("2d");
+    const ctx = document.getElementById("chart").getContext("2d");
 
-    const chart = new Chart(canvas, {
+    const chart = new Chart(ctx, {
       type: "line",
       data: {
         labels: [],
         datasets: [{
-          label: symbol,
+          label: "Price",
           data: [],
           borderColor: "#1de9b6",
           backgroundColor: "rgba(29, 233, 182, 0.1)",
           borderWidth: 2,
-          tension: 0.25,
+          tension: 0.3,
           pointRadius: 0,
           fill: true
         }]
@@ -42,31 +34,25 @@
         responsive: true,
         animation: false,
         scales: {
-          x: {
-            ticks: { color: "#aaa", font: { size: 10 } },
-            grid: { color: "#333" }
-          },
-          y: {
-            ticks: { color: "#aaa", callback: val => val.toFixed(2) },
-            grid: { color: "#333" }
-          }
+          x: { ticks: { color: "#aaa" }, grid: { color: "#333" } },
+          y: { ticks: { color: "#aaa" }, grid: { color: "#333" } }
         },
         plugins: {
-          legend: {
-            labels: { color: "#0f0", font: { size: 12 } }
-          }
+          legend: { labels: { color: "#fff" } }
         }
       }
     });
 
     const ws = new WebSocket(
-      `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/${symbol}`
+      `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/vix75`
     );
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       const time = new Date(data.tick.epoch * 1000).toLocaleTimeString();
       const price = data.tick.quote;
+
+      document.getElementById("last-price").textContent = `Last Price: ${price}`;
 
       chart.data.labels.push(time);
       chart.data.datasets[0].data.push(price);
