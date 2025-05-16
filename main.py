@@ -1,51 +1,51 @@
+import json
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
-import datetime
 
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+FIREBASE_DB_URL = "https://data-364f1-default-rtdb.firebaseio.com/Vix75.json"
+
 @app.get("/")
-async def root():
+async def index():
     return FileResponse("static/index.html")
 
-@app.get("/data")
+@app.get("/api/vix75")
 async def get_vix75_data():
-    url = "https://data-364f1-default-rtdb.firebaseio.com/Vix75.json"
     async with httpx.AsyncClient() as client:
-        resp = await client.get(url)
-        data = resp.json()
+        response = await client.get(FIREBASE_DB_URL)
+        response.raise_for_status()
+        data = response.json()
 
-    ticks = sorted(data.values(), key=lambda x: x["timestamp"])
+    # Convert ticks into sorted list
+    sorted_ticks = sorted(data.values(), key=lambda x: x["timestamp"])
     candles = []
-    current = None
-    current_minute = None
+    current_candle = {}
 
-    for tick in ticks:
+    for tick in sorted_ticks:
         ts = tick["timestamp"]
-        dt = datetime.datetime.fromtimestamp(ts)
-        minute_key = dt.replace(second=0)
+        minute = ts - (ts % 60)
+        price = tick["price"]
 
-        if current_minute != minute_key:
-            if current:
-                candles.append(current)
-            current = {
-                "time": minute_key.isoformat(),
-                "open": tick["price"],
-                "high": tick["price"],
-                "low": tick["price"],
-                "close": tick["price"]
+        if not current_candle or current_candle["time"] != minute:
+            if current_candle:
+                candles.append(current_candle)
+            current_candle = {
+                "time": minute * 1000,
+                "open": price,
+                "high": price,
+                "low": price,
+                "close": price
             }
-            current_minute = minute_key
         else:
-            current["high"] = max(current["high"], tick["price"])
-            current["low"] = min(current["low"], tick["price"])
-            current["close"] = tick["price"]
+            current_candle["high"] = max(current_candle["high"], price)
+            current_candle["low"] = min(current_candle["low"], price)
+            current_candle["close"] = price
 
-    if current:
-        candles.append(current)
+    if current_candle:
+        candles.append(current_candle)
 
     return candles
-
