@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+websockets
+aiohttp
+numpy
+httpx
+sseclient-py
+requests
