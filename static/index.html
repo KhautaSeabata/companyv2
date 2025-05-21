@@ -74,6 +74,7 @@
     });
 
     const signalBox = document.getElementById("signalBox");
+    let isInitialLoad = true;
 
     function connectWS() {
       const ws = new WebSocket(`ws://${location.host}/ws`);
@@ -81,14 +82,34 @@
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
 
-        if (msg.ticks) {
+        // Initial full chart
+        if (msg.ticks && isInitialLoad) {
           const labels = msg.ticks.map(t => new Date(t.time * 1000).toLocaleTimeString());
           const data = msg.ticks.map(t => t.price);
           chart.data.labels = labels;
           chart.data.datasets[0].data = data;
           chart.update();
+          isInitialLoad = false;
         }
 
+        // Auto-update with latest tick
+        if (msg.ticks && msg.ticks.length > 0 && !isInitialLoad) {
+          const latest = msg.ticks[msg.ticks.length - 1];
+          const timeLabel = new Date(latest.time * 1000).toLocaleTimeString();
+
+          chart.data.labels.push(timeLabel);
+          chart.data.datasets[0].data.push(latest.price);
+
+          // Keep chart length at 300
+          if (chart.data.labels.length > 300) {
+            chart.data.labels.shift();
+            chart.data.datasets[0].data.shift();
+          }
+
+          chart.update();
+        }
+
+        // Update signal box
         if (msg.signals) {
           if (msg.signals.length === 0) {
             signalBox.innerHTML = "<b>Active Signals:</b><br><i>No active signals.</i>";
@@ -113,7 +134,7 @@
       };
 
       ws.onclose = () => {
-        setTimeout(connectWS, 3000); // Try to reconnect every 3s
+        setTimeout(connectWS, 3000); // Try reconnecting
       };
     }
 
