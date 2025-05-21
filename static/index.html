@@ -1,46 +1,95 @@
-from fastapi import FastAPI, WebSocket
-from fastapi.middleware.cors import CORSMiddleware
-import httpx
-import asyncio
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Vix25 Live Chart</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      background: #111;
+      color: #eee;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    canvas {
+      background: #222;
+      border: 1px solid #333;
+      max-width: 1000px;
+      height: 400px;
+      display: block;
+      margin: auto;
+    }
+  </style>
+</head>
+<body>
+  <h2>📈 Vix25 Live Price Chart (last 300 ticks)</h2>
+  <canvas id="lineChart"></canvas>
 
-app = FastAPI()
+  <script>
+    const ctx = document.getElementById('lineChart').getContext('2d');
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    const chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Vix25 Price',
+          data: [],
+          borderColor: '#0ff',
+          backgroundColor: 'rgba(0, 255, 255, 0.1)',
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: true,
+          tension: 0.1
+        }]
+      },
+      options: {
+        animation: false,
+        responsive: true,
+        scales: {
+          x: {
+            ticks: { color: '#ccc' },
+            type: 'time',
+            time: { tooltipFormat: 'HH:mm:ss', unit: 'minute', displayFormats: {minute: 'HH:mm'} },
+            grid: { color: '#333' }
+          },
+          y: {
+            ticks: { color: '#ccc' },
+            grid: { color: '#333' }
+          }
+        },
+        plugins: {
+          legend: { labels: { color: '#0ff' } }
+        }
+      }
+    });
 
-BASE_URL = "https://vix75-f6684-default-rtdb.firebaseio.com/"
-TICK_PATH = "ticks/R_25.json"
+    const wsProtocol = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${wsProtocol}://${location.host}/ws`);
 
-async def fetch_ticks():
-    async with httpx.AsyncClient() as client:
-        res = await client.get(BASE_URL + TICK_PATH)
-        if res.status_code == 200:
-            raw = res.json()
-            if not raw:
-                return []
-            # Sort ticks by epoch ascending
-            ticks = sorted(
-                [{"time": v["epoch"], "price": v["quote"]} for v in raw.values()],
-                key=lambda x: x["time"]
-            )
-            # Return last 300 ticks
-            return ticks[-300:]
-        return []
+    ws.onopen = () => {
+      console.log('WebSocket connected');
+    };
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
+    ws.onerror = () => {
+      console.error('WebSocket error');
+    };
 
-    try:
-        while True:
-            ticks = await fetch_ticks()
-            if ticks:
-                await websocket.send_json({"ticks": ticks})
-            await asyncio.sleep(1)
-    except Exception as e:
-        print(f"WebSocket disconnected: {e}")
+    ws.onclose = () => {
+      console.warn('WebSocket disconnected');
+    };
+
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
+      if (msg.ticks) {
+        const labels = msg.ticks.map(t => new Date(t.time * 1000));
+        const data = msg.ticks.map(t => t.price);
+
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = data;
+        chart.update();
+      }
+    };
+  </script>
+</body>
+</html>
