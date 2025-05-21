@@ -3,49 +3,49 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Tick Chart Viewer</title>
+  <title>Live Tick Chart</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <style>
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background-color: #000;
+      background: #000;
       color: #fff;
       display: flex;
       flex-direction: column;
       height: 100vh;
     }
     #top-bar {
+      padding: 8px 12px;
+      background: #111;
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      padding: 8px 12px;
-      background-color: #111;
-      font-size: 14px;
     }
     #live-price {
       color: #00ff99;
       font-weight: bold;
     }
     #chart-container {
-      position: relative;
       flex: 1;
+      position: relative;
     }
     canvas {
       width: 100% !important;
       height: 100% !important;
     }
     #toolbar {
+      padding: 6px 12px;
+      background: #111;
       display: flex;
       justify-content: space-between;
-      padding: 6px 12px;
-      background-color: #111;
     }
     .range-btn, .zoom-btn {
       padding: 4px 10px;
       margin-right: 6px;
-      background-color: #222;
+      background: #222;
       border: 1px solid #444;
       color: #fff;
       cursor: pointer;
@@ -53,7 +53,7 @@
       font-size: 12px;
     }
     .range-btn.active {
-      background-color: #00ff99;
+      background: #00ff99;
       color: #000;
     }
     #status {
@@ -72,7 +72,7 @@
 
   <div id="chart-container">
     <canvas id="tick-chart"></canvas>
-    <div id="status">🔄 Loading tick data...</div>
+    <div id="status">🔄 Connecting to Firebase...</div>
   </div>
 
   <div id="toolbar">
@@ -90,21 +90,29 @@
   </div>
 
   <script>
-    const ctx = document.getElementById('tick-chart').getContext('2d');
-    const livePrice = document.getElementById('live-price');
-    const statusEl = document.getElementById('status');
-    const rangeButtons = document.querySelectorAll('.range-btn');
+    // Firebase config
+    const firebaseConfig = {
+      databaseURL: "https://data-364f1-default-rtdb.firebaseio.com"
+    };
 
-    let tickHistory = [];
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const tickRef = db.ref("ticks/Vix25"); // Adjust this path if needed
+
+    const ctx = document.getElementById("tick-chart").getContext("2d");
+    const livePrice = document.getElementById("live-price");
+    const statusEl = document.getElementById("status");
+    const rangeButtons = document.querySelectorAll(".range-btn");
+
     let chart;
+    let tickData = [];
     let maxTicks = 100;
 
-    function createTickChart() {
+    function drawChart() {
       if (chart) chart.destroy();
 
-      const labels = tickHistory.map((tick, i) => i + 1);
-      const prices = tickHistory.map(tick => tick.quote);
-      const lastPrice = prices[prices.length - 1];
+      const labels = tickData.map((_, i) => i + 1);
+      const prices = tickData.map(t => t.quote);
 
       chart = new Chart(ctx, {
         type: 'line',
@@ -135,50 +143,39 @@
             }
           },
           scales: {
-            x: {
-              display: false,
-            },
+            x: { display: false },
             y: {
-              ticks: {
-                color: "#ccc",
-                font: { size: 12 }
-              },
+              ticks: { color: "#ccc", font: { size: 12 } },
               grid: { color: "#333" }
             }
           }
         }
       });
 
-      livePrice.textContent = lastPrice.toFixed(5);
-    }
-
-    async function fetchTickData() {
-      try {
-        statusEl.textContent = "🔄 Loading tick data...";
-        const response = await fetch(`/api/ticks?symbol=R_25&limit=${maxTicks}`);
-        const data = await response.json();
-
-        if (!data || !data.length) {
-          statusEl.textContent = "⚠️ No tick data available";
-          return;
-        }
-
-        tickHistory = data;
-        createTickChart();
-        statusEl.style.display = "none";
-      } catch (err) {
-        statusEl.textContent = "❌ Error loading tick data";
-        console.error(err);
+      if (prices.length > 0) {
+        livePrice.textContent = prices[prices.length - 1].toFixed(5);
       }
     }
 
-    // Range selection
+    // Auto-update from Firebase
+    tickRef.limitToLast(2000).on("value", snapshot => {
+      const raw = snapshot.val();
+      if (!raw) return;
+
+      const values = Object.values(raw).sort((a, b) => a.epoch - b.epoch);
+      tickData = values.slice(-maxTicks); // Trim to current range
+      drawChart();
+      statusEl.style.display = "none";
+    });
+
+    // Range selector
     rangeButtons.forEach(btn => {
       btn.addEventListener("click", () => {
         rangeButtons.forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
-        maxTicks = parseInt(btn.getAttribute("data-ticks"));
-        fetchTickData();
+        maxTicks = parseInt(btn.dataset.ticks);
+        tickData = tickData.slice(-maxTicks);
+        drawChart();
       });
     });
 
@@ -186,9 +183,6 @@
     document.getElementById("zoom-in").addEventListener("click", () => chart.zoom(1.2));
     document.getElementById("zoom-out").addEventListener("click", () => chart.zoom(0.8));
     document.getElementById("zoom-reset").addEventListener("click", () => chart.resetZoom());
-
-    // On page load
-    fetchTickData();
   </script>
 </body>
 </html>
