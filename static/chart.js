@@ -1,92 +1,107 @@
 let chart;
-const indexSelect = document.getElementById("index-select");
-const tfSelect = document.getElementById("tf-select");
-const connStatus = document.getElementById("connection-status");
+const signalList = document.getElementById("signal-list");
 
 function createChart() {
-  const ctx = document.getElementById("chart").getContext("2d");
+  const ctx = document.getElementById("lineChart").getContext("2d");
+
   chart = new Chart(ctx, {
-    type: 'candlestick',
-    data: { datasets: [{ label: 'Candles', data: [] }] },
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [{
+        label: "Vix25 Price",
+        data: [],
+        borderColor: "#0ff",
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: false,
+      }]
+    },
     options: {
       responsive: true,
-      maintainAspectRatio: false,
       animation: false,
       scales: {
-        x: { ticks: { color: "#aaa" }, grid: { color: "#333" } },
-        y: { ticks: { color: "#aaa" }, grid: { color: "#333" } }
+        x: {
+          type: 'time',
+          time: {
+            tooltipFormat: 'HH:mm:ss',
+            unit: 'second',
+            displayFormats: {
+              second: 'HH:mm:ss'
+            }
+          },
+          ticks: { color: "#aaa" },
+          grid: { color: "#333" }
+        },
+        y: {
+          ticks: { color: "#aaa" },
+          grid: { color: "#333" }
+        }
       },
       plugins: {
-        legend: { labels: { color: "#0f0" } }
+        legend: { labels: { color: "#0ff" } }
       }
     }
   });
 }
 
-function updateChart(candles) {
-  chart.data.datasets[0].data = candles.map(c => ({
-    x: new Date(c.time * 1000),
-    o: c.open,
-    h: c.high,
-    l: c.low,
-    c: c.close,
-  }));
+function updateChart(ticks) {
+  // Map ticks to Chart.js time/price format
+  chart.data.labels = ticks.map(t => new Date(t.time * 1000));
+  chart.data.datasets[0].data = ticks.map(t => t.price);
   chart.update();
-  setTimeout(() => {
-    chart.canvas.parentNode.scrollLeft = chart.canvas.scrollWidth;
-  }, 100);
-}
-
-function connectSocket(index, tf) {
-  const protocol = location.protocol === "https:" ? "wss" : "ws";
-  const socket = new WebSocket(`${protocol}://${location.host}/ws/${index}/${tf}`);
-
-  socket.onopen = () => {
-    connStatus.textContent = "Connected";
-    connStatus.classList.remove("disconnected");
-  };
-
-  socket.onclose = () => {
-    connStatus.textContent = "Disconnected";
-    connStatus.classList.add("disconnected");
-  };
-
-  socket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (data.candles) {
-      updateChart(data.candles);
-    }
-    if (data.signal) {
-      displaySignal(data.signal);
-    }
-  };
 }
 
 function displaySignal(signal) {
-  const container = document.getElementById("signal-list");
-  if (!container) return;
+  if (!signal) return;
+
+  // Clear previous signals (or keep if you want)
+  signalList.innerHTML = "";
 
   const html = `
-    <div style="margin-bottom:12px; border-bottom: 1px solid #0f0; padding-bottom: 8px;">
-      <b>Pattern:</b> ${signal.pattern} <br />
-      <b>Entry:</b> ${signal.entry} <br />
-      <b>TP:</b> ${signal.tp} <br />
-      <b>SL:</b> ${signal.sl} <br />
-      <b>Signal Time (JHB):</b> ${new Date(signal.time * 1000).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', hour12: false })} <br />
-      <b>Status:</b> ${signal.status || 'Active'}
+    <div class="signal">
+      <b>Pattern:</b> ${signal.pattern} <br>
+      <b>Entry:</b> ${signal.entry} <br>
+      <b>TP:</b> ${signal.tp} <br>
+      <b>SL:</b> ${signal.sl} <br>
+      <b>Time:</b> ${new Date(signal.time * 1000).toLocaleTimeString()}
     </div>
   `;
 
-  // Append new signal on top
-  container.insertAdjacentHTML('afterbegin', html);
+  signalList.innerHTML = html;
 }
 
-function init() {
+function connectWebSocket() {
+  const protocol = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${protocol}://${location.host}/ws`);
+
+  ws.onopen = () => {
+    console.log("WebSocket connected");
+  };
+
+  ws.onclose = () => {
+    console.log("WebSocket disconnected");
+    signalList.innerHTML = "<b>Disconnected from server</b>";
+  };
+
+  ws.onerror = () => {
+    console.log("WebSocket error");
+    signalList.innerHTML = "<b>WebSocket error occurred</b>";
+  };
+
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+
+    if (msg.ticks) {
+      updateChart(msg.ticks);
+    }
+    if (msg.signal) {
+      displaySignal(msg.signal);
+    }
+  };
+}
+
+window.onload = () => {
   createChart();
-  connectSocket(indexSelect.value, tfSelect.value);
-
-  indexSelect.addEventListener("change", () => location.reload());
-  tfSelect.addEventListener("change", () => location.reload());
-}
-
-window.onload = init;
+  connectWebSocket();
+};
