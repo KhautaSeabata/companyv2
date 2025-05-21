@@ -1,41 +1,44 @@
-import os
-from fastapi import FastAPI, Request
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-import httpx
+# main.py
+import asyncio
+import websockets
+import json
+import requests
 
-app = FastAPI()
+FIREBASE_URL = "https://data-364f1-default-rtdb.firebaseio.com"
+DERIV_WS_URL = "wss://ws.derivws.com/websockets/v3?app_id=1089"
+SYMBOL = "R_25"  # Volatility 25 Index (change to R_10, R_75, etc.)
 
-# Serve static files from /static directory
-app.mount("/static", StaticFiles(directory="static"), name="static")
+async def get_ticks():
+    async with websockets.connect(DERIV_WS_URL) as ws:
+        # Subscribe to ticks
+        await ws.send(json.dumps({
+            "ticks": SYMBOL,
+            "subscribe": 1
+        }))
+        print(f"Subscribed to {SYMBOL} ticks...")
 
-@app.api_route("/", methods=["GET", "HEAD"])
-async def get_index(request: Request):
-    if request.method == "HEAD":
-        return ""
-    return FileResponse("static/index.html")
+        while True:
+            message = await ws.recv()
+            data = json.loads(message)
 
-@app.get("/api/ticks")
-async def get_latest_ticks():
-    # Replace this URL with your actual Firebase Realtime Database ticks node URL
-    firebase_url = (
-        "https://your-project-id.firebaseio.com/ticks.json"
-        "?orderBy=\"epoch\"&limitToLast=300"
-    )
-    async with httpx.AsyncClient() as client:
-        response = await client.get(firebase_url)
-        response.raise_for_status()
-        data = response.json()
+            if "tick" in data:
+                tick = data["tick"]
+                tick_data = {
+                    "symbol": tick["symbol"],
+                    "epoch": tick["epoch"],
+                    "quote": tick["quote"]
+                }
 
-    # Firebase returns a dict of ticks keyed by their unique id
-    ticks = list(data.values()) if data else []
-
-    # Sort ascending by epoch (oldest first)
-    ticks.sort(key=lambda x: x.get("epoch", 0))
-
-    return ticks
+                # Push to Firebase
+                firebase_url = f"{FIREBASE_URL}/ticks/{SYMBOL}.json"
+                try:
+                    response = requests.post(firebase_url, json=tick_data)
+                    if response.status_code != 200:
+                        print("Failed to push tick:", response.text)
+                    else:
+                        print("Tick pushed:", tick_data)
+                except Exception as e:
+                    print("Firebase error:", e)
 
 if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    asyncio.run(get_ticks())
