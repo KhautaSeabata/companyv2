@@ -9,7 +9,7 @@ import uuid
 
 app = FastAPI()
 
-# Enable CORS for frontend access
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,15 +18,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve static files (HTML, JS, CSS)
+# Static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Redirect root URL to static index.html
 @app.get("/")
 async def root():
-    return RedirectResponse(url="/static/index.html")
+    return RedirectResponse("/static/index.html")
 
-# Firebase settings
 BASE_URL = "https://vix75-f6684-default-rtdb.firebaseio.com/"
 TICK_PATH = "ticks/R_25.json"
 SIGNAL_PATH = "signals/R_25"
@@ -43,10 +41,11 @@ async def fetch_ticks():
             raw = res.json()
             if not raw:
                 return []
-            return sorted(
+            ticks = sorted(
                 [{"time": v["epoch"], "price": v["quote"]} for v in raw.values()],
                 key=lambda x: x["time"]
             )
+            return ticks[-300:]  # Only latest 300 ticks
         return []
 
 async def store_signal(signal):
@@ -123,3 +122,4 @@ async def websocket_endpoint(websocket: WebSocket):
 
     except Exception as e:
         print("WebSocket disconnected:", e)
+        await websocket.close()
