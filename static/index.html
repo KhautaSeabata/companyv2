@@ -74,41 +74,50 @@
     });
 
     const signalBox = document.getElementById("signalBox");
-    const ws = new WebSocket("ws://localhost:8000/ws"); // Change host if deployed
 
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
+    function connectWS() {
+      const ws = new WebSocket(`ws://${location.host}/ws`);
 
-      if (msg.ticks) {
-        const labels = msg.ticks.map(t => new Date(t.time * 1000).toLocaleTimeString());
-        const data = msg.ticks.map(t => t.price);
-        chart.data.labels = labels;
-        chart.data.datasets[0].data = data;
-        chart.update();
-      }
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
 
-      if (msg.signals) {
-        if (msg.signals.length === 0) {
-          signalBox.innerHTML = "<b>Active Signals:</b><br><i>No active signals.</i>";
-        } else {
-          signalBox.innerHTML = "<b>Active Signals:</b><br>";
-          msg.signals.forEach(sig => {
-            signalBox.innerHTML += `
-              <div class="signal">
-                📍 Entry: <b>${sig.entry}</b><br>
-                🎯 TP: <span style="color: #0f0;">${sig.tp}</span><br>
-                🛑 SL: <span style="color: #f00;">${sig.sl}</span><br>
-                🕒 Time: ${new Date(sig.entry_time * 1000).toLocaleTimeString()}
-              </div>
-            `;
-          });
+        if (msg.ticks) {
+          const labels = msg.ticks.map(t => new Date(t.time * 1000).toLocaleTimeString());
+          const data = msg.ticks.map(t => t.price);
+          chart.data.labels = labels;
+          chart.data.datasets[0].data = data;
+          chart.update();
         }
-      }
-    };
 
-    ws.onerror = () => {
-      signalBox.innerHTML = "<b>WebSocket Error</b> - please check your backend.";
-    };
+        if (msg.signals) {
+          if (msg.signals.length === 0) {
+            signalBox.innerHTML = "<b>Active Signals:</b><br><i>No active signals.</i>";
+          } else {
+            signalBox.innerHTML = "<b>Active Signals:</b><br>";
+            msg.signals.forEach(sig => {
+              signalBox.innerHTML += `
+                <div class="signal">
+                  📍 Entry: <b>${sig.entry}</b><br>
+                  🎯 TP: <span style="color: #0f0;">${sig.tp}</span><br>
+                  🛑 SL: <span style="color: #f00;">${sig.sl}</span><br>
+                  🕒 Time: ${new Date(sig.entry_time * 1000).toLocaleTimeString()}
+                </div>
+              `;
+            });
+          }
+        }
+      };
+
+      ws.onerror = () => {
+        signalBox.innerHTML = "<b>WebSocket Error</b> - please check your backend.";
+      };
+
+      ws.onclose = () => {
+        setTimeout(connectWS, 3000); // Try to reconnect every 3s
+      };
+    }
+
+    connectWS();
   </script>
 </body>
 </html>
