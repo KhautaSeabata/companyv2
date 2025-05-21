@@ -1,86 +1,84 @@
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
-import httpx
+import firebase_admin
+from firebase_admin import credentials, db
 import asyncio
-from analyzer.analyzer import Analyzer  # your analyzer module
+import json
+import time
 
 app = FastAPI()
 
-# Allow CORS for frontend access
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Serve static files
+# Serve static files (index.html, chart.js, etc)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Redirect root to index.html
-@app.get("/")
-async def root():
-    return RedirectResponse(url="/static/index.html")
+# Firebase setup
+cred = credentials.Certificate("path/to/your/firebase-service-account.json")
+firebase_admin.initialize_app(cred, {
+    "databaseURL": "https://vix75-f6684-default-rtdb.firebaseio.com/"
+})
 
-# Firebase DB URLs
-BASE_URL = "https://vix75-f6684-default-rtdb.firebaseio.com/"
-TICK_PATH = "ticks/R_25.json"
+# Reference to ticks R_25
+ticks_ref = db.reference("ticks/R_25")
 
-analyzer = Analyzer()
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
 
-async def fetch_ticks():
-    async with httpx.AsyncClient() as client:
-        res = await client.get(BASE_URL + TICK_PATH)
-        if res.status_code == 200:
-            raw = res.json()
-            if not raw:
-                return []
-            ticks = sorted(
-                [{"time": v["epoch"], "price": v["quote"]} for v in raw.values()],
-                key=lambda x: x["time"]
-            )
-            return ticks[-300:]  # last 300 ticks
-        return []
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def send_json(self, websocket: WebSocket, data):
+        await websocket.send_text(json.dumps(data))
+
+    async def broadcast(self, data):
+        for connection in self.active_connections:
+            await self.send_json(connection, data)
+
+manager = ConnectionManager()
+
+# Dummy analyzer function example (replace with your actual pattern detection logic)
+def analyze_pattern(ticks):
+    # For example, detect if last price increased sharply (dummy signal)
+    if len(ticks) < 5:
+        return None
+    last = ticks[-1]["quote"]
+    prev = ticks[-5]["quote"]
+    if last > prev * 1.005:  # 0.5% increase in 5 ticks
+        return {
+            "pattern": "DummyUptrend",
+            "entry": last,
+            "tp": round(last * 1.01, 2),
+            "sl": round(last * 0.995, 2),
+            "time": ticks[-1]["epoch"],
+            "status": "Active"
+        }
+    return None
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    last_signal_time = None
-
+    await manager.connect(websocket)
     try:
+        # On connect, send last 300 ticks snapshot once
         while True:
-            ticks = await fetch_ticks()
-            if not ticks:
-                await asyncio.sleep(1)
-                continue
+            all_ticks = ticks_ref.order_by_key().limit_to_last(300).get()
+            if all_ticks:
+                # all_ticks is dict {key: {epoch, quote, symbol}}
+                # convert to list sorted by epoch ascending
+                ticks_list = sorted(all_ticks.values(), key=lambda x: x["epoch"])
+            else:
+                ticks_list = []
 
-            # Run analyzer on ticks for signal detection
-            signal = analyzer.detect(ticks)
+            # Analyze pattern from current ticks
+            signal = analyze_pattern(ticks_list)
 
-            # Only send signal if new or changed
-            send_signal = None
-            if signal and (last_signal_time is None or signal["time"] != last_signal_time):
-                last_signal_time = signal["time"]
-                send_signal = {
-                    "pattern": signal.get("pattern", "Unknown"),
-                    "entry": signal["entry"],
-                    "tp": signal["tp"],
-                    "sl": signal["sl"],
-                    "time": signal["time"],
-                    "status": "Active",
-                }
+            # Send ticks + signal to client
+            await manager.send_json(websocket, {"ticks": ticks_list, "signal": signal})
 
-            # Send ticks and signal (if any) to client
-            payload = {"ticks": ticks}
-            if send_signal:
-                payload["signal"] = send_signal
-
-            await websocket.send_json(payload)
-
-            await asyncio.sleep(1)
-
-    except Exception as e:
-        print(f"WebSocket disconnected: {e}")
+            await asyncio.sleep(1)  # update every 1 sec
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        print("Client disconnected")
