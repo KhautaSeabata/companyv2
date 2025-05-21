@@ -1,123 +1,59 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <title>R_25 Live Tick Chart</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vix75 Chart</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body {
-      background: #121212;
-      color: #fff;
-      font-family: Arial, sans-serif;
-      text-align: center;
-      padding: 20px;
-    }
-    canvas {
-      max-width: 100%;
-      height: 400px;
-    }
-    #status {
-      margin-bottom: 10px;
-      color: #0f0;
-    }
+    canvas { max-width: 100%; }
+    .signal-box { margin-top: 10px; font-family: monospace; }
   </style>
 </head>
 <body>
-  <h2>📈 R_25 Live Tick Chart</h2>
-  <div id="status">🔄 Connecting to backend...</div>
-  <canvas id="tickChart"></canvas>
+  <canvas id="lineChart"></canvas>
+  <div class="signal-box" id="signalBox"></div>
 
   <script>
-    let chart;
-    let lastEpoch = null;
+    const ctx = document.getElementById('lineChart').getContext('2d');
+    const data = { labels: [], datasets: [{ label: 'Vix75', data: [], borderColor: 'blue', tension: 0.2 }] };
+    const config = { type: 'line', data: data, options: { responsive: true } };
+    const chart = new Chart(ctx, config);
 
-    function formatTime(date) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
+    const signalBox = document.getElementById('signalBox');
+    const ws = new WebSocket("ws://localhost:8000/ws");
 
-    async function fetchLatestTicks() {
-      const res = await fetch("/api/ticks");
-      const data = await res.json();
-      return data.map(tick => ({
-        time: new Date(tick.epoch * 1000),
-        price: tick.quote,
-        epoch: tick.epoch
-      }));
-    }
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data);
 
-    async function initChart() {
-      const ticks = await fetchLatestTicks();
-      if (!ticks.length) {
-        document.getElementById("status").textContent = "⚠️ No data found";
-        return;
-      }
-
-      lastEpoch = ticks[ticks.length - 1].epoch;
-
-      const ctx = document.getElementById("tickChart").getContext("2d");
-      chart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: ticks.map(t => formatTime(t.time)),
-          datasets: [{
-            label: 'R_25 Price',
-            data: ticks.map(t => t.price),
-            borderColor: '#00e676',
-            backgroundColor: 'rgba(0, 230, 118, 0.2)',
-            fill: true,
-            tension: 0.3,
-            borderWidth: 2,
-            pointRadius: 0
-          }]
-        },
-        options: {
-          responsive: true,
-          animation: false,
-          scales: {
-            x: {
-              type: 'category',
-              ticks: { color: "#aaa" },
-              grid: { color: "#333" }
-            },
-            y: {
-              ticks: { color: "#aaa" },
-              grid: { color: "#333" }
-            }
-          },
-          plugins: {
-            legend: { labels: { color: "#fff" } }
-          }
-        }
-      });
-
-      document.getElementById("status").textContent = "✅ Connected & Live";
-    }
-
-    async function pollFirebase() {
-      const res = await fetch("/api/ticks");
-      const data = await res.json();
-      const latest = data[data.length - 1];
-
-      if (latest.epoch !== lastEpoch) {
-        lastEpoch = latest.epoch;
-        const time = new Date(latest.epoch * 1000);
-        const price = latest.quote;
-
-        chart.data.labels.push(formatTime(time));
-        chart.data.datasets[0].data.push(price);
-
-        if (chart.data.labels.length > 300) {
-          chart.data.labels.shift();
-          chart.data.datasets[0].data.shift();
-        }
-
+      if (msg.ticks) {
+        const times = msg.ticks.map(t => new Date(t.time).toLocaleTimeString());
+        const prices = msg.ticks.map(t => t.price);
+        chart.data.labels = times;
+        chart.data.datasets[0].data = prices;
         chart.update();
       }
-    }
 
-    initChart();
-    setInterval(pollFirebase, 1000);
+      if (msg.signal) {
+        const s = msg.signal;
+        signalBox.innerHTML = `
+          <b>Signal Detected</b><br>
+          Entry: ${s.entry} | TP: ${s.tp} | SL: ${s.sl} | Time: ${new Date(s.time).toLocaleTimeString()}
+        `;
+
+        // Optional: Add signal marker
+        chart.data.datasets.push({
+          label: 'Signal',
+          data: Array(chart.data.labels.length - 1).fill(null).concat(s.entry),
+          borderColor: 'green',
+          borderWidth: 2,
+          pointRadius: 5,
+          pointBackgroundColor: 'green',
+          type: 'line',
+          fill: false,
+          showLine: false
+        });
+        chart.update();
+      }
+    };
   </script>
 </body>
 </html>
