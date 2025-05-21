@@ -1,27 +1,57 @@
-from fastapi import FastAPI
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
+from analyzer.analyzer import Analyzer  # Make sure it has a detect(ticks) method
+import asyncio
 import aiohttp
+import datetime
+import firebase_admin
+from firebase_admin import db, credentials
 
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
+origins = ["*"]
+app.add_middleware(
+    CORSMiddleware, allow_origins=origins, allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"]
+)
 
-FIREBASE_URL = "https://vix75-f6684-default-rtdb.firebaseio.com/ticks/R_25.json"
+# Firebase setup
+cred = credentials.Certificate("firebase-admin.json")
+firebase_admin.initialize_app(cred, {
+    "databaseURL": "https://data-364f1-default-rtdb.firebaseio.com/"
+})
 
-@app.get("/")
-async def root():
-    return FileResponse("static/index.html")
+analyzer = Analyzer()
+clients = []
 
-@app.get("/api/ticks")
-async def get_ticks():
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    clients.append(websocket)
+
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(FIREBASE_URL) as resp:
-                data = await resp.json()
-                if not data:
-                    return JSONResponse(content=[])
-                sorted_data = sorted(data.values(), key=lambda x: x["epoch"])
-                last_300 = sorted_data[-300:]
-                return JSONResponse(content=last_300)
+        ref = db.reference("ticks/Vix75")
+        last_signal_time = None
+
+        while True:
+            ticks = ref.order_by_key().limit_to_last(200).get()
+            if ticks:
+                tick_list = [{"time": int(k), "price": v} for k, v in ticks.items()]
+                tick_list.sort(key=lambda x: x["time"])
+                await websocket.send_json({"ticks": tick_list})
+
+                # Detect pattern
+                signal = analyzer.detect(tick_list)
+                if signal and (not last_signal_time or signal["time"] != last_signal_time):
+                    last_signal_time = signal["time"]
+
+                    # Store signal in Firebase
+                    db.reference("signals/Vix75").push(signal)
+
+                    # Send signal to frontend
+                    await websocket.send_json({"signal": signal})
+            await asyncio.sleep(1)
+
     except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        print("WebSocket error:", e)
+    finally:
+        clients.remove(websocket)
