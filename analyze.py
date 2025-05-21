@@ -1,28 +1,31 @@
-# analyze.py
-
 class Analyzer:
     def __init__(self):
-        self.prices = []
-        self.timestamps = []
+        self.hs_analyzer = HeadShouldersAnalyzer()
+        self.trendline_analyzer = TrendlineAnalyzer()
+        self.dtb_analyzer = DoubleTopBottomAnalyzer()
+        self.channel_analyzer = ChannelAnalyzer()
 
-    def analyze(self, price, timestamp):
-        self.prices.append(price)
-        self.timestamps.append(timestamp)
+    def analyze(self, candles):
+        signals = []
 
-        # Example: return a signal every 20 ticks
-        if len(self.prices) >= 20:
-            entry = self.prices[-1]
-            tp = entry + 20
-            sl = entry - 20
-            signal = {
-                "signal": "buy" if entry % 2 == 0 else "sell",
-                "entry": round(entry, 2),
-                "tp": round(tp, 2),
-                "sl": round(sl, 2),
-                "timestamp": timestamp
-            }
-            self.prices = []
-            self.timestamps = []
-            return signal
+        hs_signal = self.hs_analyzer.generate_signal(candles)
+        if hs_signal:
+            hs_signal['pattern'] = 'Head & Shoulders'
+            signals.append(hs_signal)
 
-        return None
+        trendline_signal = self.trendline_analyzer.generate_signal(candles)
+        if trendline_signal:
+            trendline_signal['pattern'] = 'Trendline'
+            signals.append(trendline_signal)
+
+        dtb_signal = self.dtb_analyzer.generate_signal(candles)
+        if dtb_signal:
+            dtb_signal['pattern'] = 'Double Top/Bottom'
+            signals.append(dtb_signal)
+
+        channel_signal = self.channel_analyzer.generate_signal(candles)
+        if channel_signal:
+            channel_signal['pattern'] = f"{channel_signal['type'].capitalize()} Channel"
+            signals.append(channel_signal)
+
+        return signals
