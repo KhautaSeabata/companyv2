@@ -5,8 +5,7 @@ import asyncio
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-
-from analyzer import Analyzer
+from analyzer.analyzer import Analyzer
 from notifier import send_signal_to_telegram
 
 app = FastAPI()
