@@ -1,31 +1,28 @@
+from .head_shoulders import HeadShouldersAnalyzer
+from .trendline import TrendlineAnalyzer
+from .double_top_bottom import DoubleTopBottomAnalyzer
+from .channel import ChannelAnalyzer  # If you've added this
+
 class Analyzer:
     def __init__(self):
         self.hs_analyzer = HeadShouldersAnalyzer()
         self.trendline_analyzer = TrendlineAnalyzer()
         self.dtb_analyzer = DoubleTopBottomAnalyzer()
-        self.channel_analyzer = ChannelAnalyzer()
+        self.channel_analyzer = ChannelAnalyzer()  # Optional, if used
 
     def analyze(self, candles):
         signals = []
 
-        hs_signal = self.hs_analyzer.generate_signal(candles)
-        if hs_signal:
-            hs_signal['pattern'] = 'Head & Shoulders'
-            signals.append(hs_signal)
+        signal = self.hs_analyzer.detect(candles)
+        if signal: signals.append(signal)
 
-        trendline_signal = self.trendline_analyzer.generate_signal(candles)
-        if trendline_signal:
-            trendline_signal['pattern'] = 'Trendline'
-            signals.append(trendline_signal)
+        signal = self.trendline_analyzer.detect(candles)
+        if signal: signals.append(signal)
 
-        dtb_signal = self.dtb_analyzer.generate_signal(candles)
-        if dtb_signal:
-            dtb_signal['pattern'] = 'Double Top/Bottom'
-            signals.append(dtb_signal)
+        signal = self.dtb_analyzer.detect(candles)
+        if signal: signals.append(signal)
 
-        channel_signal = self.channel_analyzer.generate_signal(candles)
-        if channel_signal:
-            channel_signal['pattern'] = f"{channel_signal['type'].capitalize()} Channel"
-            signals.append(channel_signal)
+        signal = self.channel_analyzer.detect(candles)
+        if signal: signals.append(signal)
 
         return signals
