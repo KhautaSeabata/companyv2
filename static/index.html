@@ -1,58 +1,113 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Vix75 Chart</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Vix25 Live Chart with Signals</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    canvas { max-width: 100%; }
-    .signal-box { margin-top: 10px; font-family: monospace; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #f0f0f0;
+      padding: 20px;
+    }
+    canvas {
+      background: #222;
+      border: 1px solid #333;
+    }
+    #signalBox {
+      margin-top: 20px;
+      background: #1a1a1a;
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #333;
+    }
+    .signal {
+      margin-bottom: 10px;
+      padding: 10px;
+      border-left: 4px solid #0ff;
+      background: #2a2a2a;
+    }
   </style>
 </head>
 <body>
-  <canvas id="lineChart"></canvas>
-  <div class="signal-box" id="signalBox"></div>
+  <h2>📈 Vix25 Live Price Chart with Pattern Signals</h2>
+  <canvas id="lineChart" width="1000" height="400"></canvas>
+
+  <div id="signalBox">
+    <b>Active Signals:</b><br>
+    <i>Waiting for signals...</i>
+  </div>
 
   <script>
-    const ctx = document.getElementById('lineChart').getContext('2d');
-    const data = { labels: [], datasets: [{ label: 'Vix75', data: [], borderColor: 'blue', tension: 0.2 }] };
-    const config = { type: 'line', data: data, options: { responsive: true } };
-    const chart = new Chart(ctx, config);
+    const ctx = document.getElementById("lineChart").getContext("2d");
 
-    const signalBox = document.getElementById('signalBox');
-    const ws = new WebSocket("ws://localhost:8000/ws");
+    const chart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [{
+          label: "Vix25 Price",
+          data: [],
+          borderColor: "#0ff",
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: false,
+        }]
+      },
+      options: {
+        responsive: true,
+        animation: false,
+        plugins: {
+          legend: { display: true }
+        },
+        scales: {
+          x: {
+            ticks: { color: "#ccc" }
+          },
+          y: {
+            ticks: { color: "#ccc" }
+          }
+        }
+      }
+    });
+
+    const signalBox = document.getElementById("signalBox");
+    const ws = new WebSocket("ws://localhost:8000/ws"); // Change host if deployed
 
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
 
       if (msg.ticks) {
-        const times = msg.ticks.map(t => new Date(t.time).toLocaleTimeString());
-        const prices = msg.ticks.map(t => t.price);
-        chart.data.labels = times;
-        chart.data.datasets[0].data = prices;
+        const labels = msg.ticks.map(t => new Date(t.time * 1000).toLocaleTimeString());
+        const data = msg.ticks.map(t => t.price);
+        chart.data.labels = labels;
+        chart.data.datasets[0].data = data;
         chart.update();
       }
 
-      if (msg.signal) {
-        const s = msg.signal;
-        signalBox.innerHTML = `
-          <b>Signal Detected</b><br>
-          Entry: ${s.entry} | TP: ${s.tp} | SL: ${s.sl} | Time: ${new Date(s.time).toLocaleTimeString()}
-        `;
-
-        // Optional: Add signal marker
-        chart.data.datasets.push({
-          label: 'Signal',
-          data: Array(chart.data.labels.length - 1).fill(null).concat(s.entry),
-          borderColor: 'green',
-          borderWidth: 2,
-          pointRadius: 5,
-          pointBackgroundColor: 'green',
-          type: 'line',
-          fill: false,
-          showLine: false
-        });
-        chart.update();
+      if (msg.signals) {
+        if (msg.signals.length === 0) {
+          signalBox.innerHTML = "<b>Active Signals:</b><br><i>No active signals.</i>";
+        } else {
+          signalBox.innerHTML = "<b>Active Signals:</b><br>";
+          msg.signals.forEach(sig => {
+            signalBox.innerHTML += `
+              <div class="signal">
+                📍 Entry: <b>${sig.entry}</b><br>
+                🎯 TP: <span style="color: #0f0;">${sig.tp}</span><br>
+                🛑 SL: <span style="color: #f00;">${sig.sl}</span><br>
+                🕒 Time: ${new Date(sig.entry_time * 1000).toLocaleTimeString()}
+              </div>
+            `;
+          });
+        }
       }
+    };
+
+    ws.onerror = () => {
+      signalBox.innerHTML = "<b>WebSocket Error</b> - please check your backend.";
     };
   </script>
 </body>
