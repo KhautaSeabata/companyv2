@@ -2,8 +2,8 @@ let chart;
 const signalList = document.getElementById("signal-list");
 
 function createChart() {
+  console.log("Creating chart...");
   const ctx = document.getElementById("lineChart").getContext("2d");
-
   chart = new Chart(ctx, {
     type: "line",
     data: {
@@ -43,32 +43,30 @@ function createChart() {
       }
     }
   });
+  console.log("Chart created:", chart);
 }
 
 function updateChart(ticks) {
-  // Map ticks to Chart.js time/price format
-  chart.data.labels = ticks.map(t => new Date(t.time * 1000));
-  chart.data.datasets[0].data = ticks.map(t => t.price);
+  if (!ticks || ticks.length === 0) return;
+  chart.data.labels = ticks.map(t => new Date(t.epoch * 1000));
+  chart.data.datasets[0].data = ticks.map(t => t.quote);
   chart.update();
 }
 
 function displaySignal(signal) {
-  if (!signal) return;
-
-  // Clear previous signals (or keep if you want)
-  signalList.innerHTML = "";
-
+  if (!signalList) return;
   const html = `
     <div class="signal">
-      <b>Pattern:</b> ${signal.pattern} <br>
-      <b>Entry:</b> ${signal.entry} <br>
-      <b>TP:</b> ${signal.tp} <br>
-      <b>SL:</b> ${signal.sl} <br>
-      <b>Time:</b> ${new Date(signal.time * 1000).toLocaleTimeString()}
+      <b>Pattern:</b> ${signal.pattern} <br />
+      <b>Entry:</b> ${signal.entry} <br />
+      <b>TP:</b> ${signal.tp} <br />
+      <b>SL:</b> ${signal.sl} <br />
+      <b>Signal Time (JHB):</b> ${new Date(signal.time * 1000).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', hour12: false })} <br />
+      <b>Status:</b> ${signal.status || 'Active'}
     </div>
   `;
-
-  signalList.innerHTML = html;
+  // Insert new signals on top
+  signalList.insertAdjacentHTML('afterbegin', html);
 }
 
 function connectWebSocket() {
@@ -84,12 +82,13 @@ function connectWebSocket() {
     signalList.innerHTML = "<b>Disconnected from server</b>";
   };
 
-  ws.onerror = () => {
-    console.log("WebSocket error");
+  ws.onerror = (e) => {
+    console.error("WebSocket error:", e);
     signalList.innerHTML = "<b>WebSocket error occurred</b>";
   };
 
   ws.onmessage = (event) => {
+    // console.log("WebSocket message received:", event.data);
     const msg = JSON.parse(event.data);
 
     if (msg.ticks) {
