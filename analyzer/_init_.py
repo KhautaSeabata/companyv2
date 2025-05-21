@@ -1,7 +1,7 @@
-# analyzer/__init__.py
-from .hs import HeadAndShoulders
+from .hs import HeadShouldersAnalyzer
 from .trendline import TrendlineAnalyzer
-from .dtb import DoubleTopBottom
+from .dtb import DoubleTopBottomAnalyzer
+from .channel import ChannelAnalyzer
 
 class Analyzer:
     def __init__(self):
