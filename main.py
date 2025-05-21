@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from notifier import send_signal_to_telegram
 import aiohttp
 
 app = FastAPI()
