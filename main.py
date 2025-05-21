@@ -6,7 +6,7 @@ import aiohttp
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-FIREBASE_URL = "https://data-364f1-default-rtdb.firebaseio.com/ticks/R_25.json"
+FIREBASE_URL = "https://vix75-f6684-default-rtdb.firebaseio.com/ticks/R_25.json"
 
 @app.get("/")
 async def root():
