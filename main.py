@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 import aiohttp
 
 app = FastAPI()
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 FIREBASE_URL = "https://data-364f1-default-rtdb.firebaseio.com/ticks/R_25.json"
@@ -11,6 +12,10 @@ FIREBASE_URL = "https://data-364f1-default-rtdb.firebaseio.com/ticks/R_25.json"
 @app.get("/")
 async def root():
     return FileResponse("static/index.html")
+
+@app.get("/favicon.ico")
+async def favicon():
+    return FileResponse("static/favicon.ico")
 
 @app.get("/api/ticks")
 async def get_ticks():
