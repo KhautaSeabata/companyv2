@@ -2,69 +2,331 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>R_25 Live Tick Chart</title>
+  <title>R_25 Tick Chart</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@3.0.0/dist/chartjs-chart-financial.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.0/dist/chartjs-plugin-zoom.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
   <style>
+    :root {
+      --app-bg: #151922;
+      --header-bg: #1e2230;
+      --chart-bg: #131722;
+      --text-primary: #ffffff;
+      --text-secondary: #b0b0b0;
+      --accent-up: #00c176;
+      --accent-down: #ff3e46;
+      --accent-color: #2196f3;
+      --border-color: #2a2e39;
+      --grid-color: rgba(50, 57, 72, 0.8);
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: 'Roboto', Arial, sans-serif;
+    }
+    
     body {
-      background: #121212;
-      color: #fff;
-      font-family: Arial, sans-serif;
-      text-align: center;
-      padding: 20px;
+      background: var(--app-bg);
+      color: var(--text-primary);
+      font-size: 14px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
-    canvas {
-      max-width: 100%;
-      height: 400px;
-      background: #1e1e1e;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0, 230, 118, 0.3);
+    
+    /* Header styles */
+    .header {
+      background: var(--header-bg);
+      padding: 12px 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
     }
-    #status {
-      margin-bottom: 10px;
-      color: #0f0;
+    
+    .symbol-info {
+      display: flex;
+      flex-direction: column;
     }
-    #chart-type {
-      margin-bottom: 15px;
+    
+    .symbol-name {
       font-size: 16px;
-      background: #222;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+    }
+    
+    .symbol-name i {
+      margin-left: 8px;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+    
+    .price-container {
+      display: flex;
+      align-items: center;
+    }
+    
+    .current-price {
+      font-size: 18px;
+      font-weight: bold;
+      margin-right: 8px;
+    }
+    
+    .price-change {
+      font-size: 12px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--accent-up);
+    }
+    
+    .price-down {
+      background: var(--accent-down);
+    }
+    
+    .chart-controls {
+      display: flex;
+      gap: 15px;
+    }
+    
+    .chart-controls button {
+      background: transparent;
       border: none;
-      color: #0f0;
-      padding: 8px 16px;
-      border-radius: 5px;
+      color: var(--text-secondary);
+      font-size: 18px;
       cursor: pointer;
+    }
+    
+    .chart-controls button:hover {
+      color: var(--text-primary);
+    }
+    
+    /* Chart container */
+    .chart-container {
+      flex: 1;
+      width: 100%;
+      height: calc(100vh - 120px);
+      background: var(--chart-bg);
+      position: relative;
+      overflow: hidden;
+    }
+    
+    canvas {
+      width: 100%;
+      height: 100%;
+    }
+    
+    /* Chart controls */
+    .zoom-controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 50;
+    }
+    
+    .zoom-controls button {
+      width: 30px;
+      height: 30px;
+      border-radius: 4px;
+      border: 1px solid var(--border-color);
+      background: rgba(30, 34, 48, 0.8);
+      color: var(--text-secondary);
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    /* Toolbar */
+    .chart-toolbar {
+      padding: 8px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--header-bg);
+      border-bottom: 1px solid var(--border-color);
+    }
+    
+    .data-range {
+      display: flex;
+      align-items: center;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+    
+    .data-range span {
+      margin: 0 3px;
+    }
+    
+    .range-selector {
+      display: flex;
+      gap: 6px;
+    }
+    
+    .range-btn {
+      padding: 4px 10px;
+      background: var(--border-color);
+      border: none;
+      color: var(--text-secondary);
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    
+    .range-btn.active {
+      background: var(--accent-color);
+      color: white;
+    }
+    
+    /* Status */
+    #status {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.7);
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      z-index: 100;
+      transition: opacity 0.5s;
+    }
+    
+    /* Tooltip styles */
+    .chart-tooltip {
+      position: absolute;
+      display: none;
+      background: rgba(30, 34, 48, 0.9);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 8px;
+      color: var(--text-primary);
+      font-size: 12px;
+      z-index: 100;
+      pointer-events: none;
+    }
+    
+    /* Instructions message */
+    .instructions {
+      position: absolute;
+      bottom: 10px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 12px;
+      padding: 5px;
+      background-color: rgba(0,0,0,0.3);
+      border-radius: 4px;
+      margin: 0 10px;
+      opacity: 0.8;
+      z-index: 50;
     }
   </style>
 </head>
 <body>
-  <h2>📈 R_25 Live Tick Chart</h2>
-
-  <select id="chart-type">
-    <option value="line">Line Chart (Ticks)</option>
-    <option value="candlestick">Candlestick Chart (1-min OHLC)</option>
-  </select>
-
-  <div id="status">🔄 Connecting to backend...</div>
-  <canvas id="tickChart"></canvas>
+  <!-- Header with symbol info -->
+  <div class="header">
+    <div class="symbol-info">
+      <span class="symbol-name">R_25 <i class="fas fa-info-circle"></i></span>
+      <div class="price-container">
+        <span class="current-price" id="price-display">0.0000</span>
+        <span class="price-change" id="price-change">+0.00%</span>
+      </div>
+    </div>
+    <div class="chart-controls">
+      <button id="indicators-btn"><i class="fas fa-chart-line"></i></button>
+      <button id="settings-btn"><i class="fas fa-cog"></i></button>
+    </div>
+  </div>
+  
+  <!-- Chart toolbar -->
+  <div class="chart-toolbar">
+    <div class="data-range">
+      <i class="fas fa-history"></i>
+      <span>History:</span>
+    </div>
+    <div class="range-selector">
+      <button class="range-btn" data-ticks="100">100</button>
+      <button class="range-btn active" data-ticks="500">500</button>
+      <button class="range-btn" data-ticks="1000">1000</button>
+      <button class="range-btn" data-ticks="2000">2000</button>
+    </div>
+  </div>
+  
+  <!-- Chart container -->
+  <div class="chart-container">
+    <div id="status">🔄 Loading tick data...</div>
+    <div class="zoom-controls">
+      <button id="zoom-in"><i class="fas fa-plus"></i></button>
+      <button id="zoom-out"><i class="fas fa-minus"></i></button>
+      <button id="zoom-reset"><i class="fas fa-undo"></i></button>
+    </div>
+    <canvas id="tickChart"></canvas>
+    <div class="chart-tooltip" id="chart-tooltip"></div>
+    <div class="instructions">Scroll/Pinch to zoom • Drag to pan • Double tap to reset</div>
+  </div>
 
   <script>
     let chart;
     let lastEpoch = null;
+    let lastPrice = 0;
+    let tickHistory = [];
+    let maxTicks = 500; // Default tick history size
+    
     const ctx = document.getElementById("tickChart").getContext("2d");
     const statusEl = document.getElementById("status");
-    const chartTypeSelect = document.getElementById("chart-type");
-
+    const priceDisplay = document.getElementById("price-display");
+    const priceChange = document.getElementById("price-change");
+    const rangeButtons = document.querySelectorAll(".range-btn");
+    const chartTooltip = document.getElementById("chart-tooltip");
+    
     function formatTime(date) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+    
+    // Update price display with animation effect
+    function updatePriceDisplay(price, previousPrice) {
+      priceDisplay.textContent = price.toFixed(4);
+      
+      if (price > previousPrice) {
+        priceDisplay.style.color = "var(--accent-up)";
+        priceChange.textContent = `+${((price/previousPrice - 1) * 100).toFixed(2)}%`;
+        priceChange.classList.remove("price-down");
+      } else if (price < previousPrice) {
+        priceDisplay.style.color = "var(--accent-down)";
+        priceChange.textContent = `${((price/previousPrice - 1) * 100).toFixed(2)}%`;
+        priceChange.classList.add("price-down");
+      }
+      
+      // Reset color after animation
+      setTimeout(() => {
+        priceDisplay.style.color = "";
+      }, 1000);
+      
+      return price;
     }
 
-    // Create Line Chart for Tick Data
-    function createLineChart(ticks) {
-      const labels = ticks.map(t => formatTime(new Date(t.epoch * 1000)));
-      const prices = ticks.map(t => t.quote);
+    // Create Tick Chart
+    function createTickChart() {
+      if (!tickHistory.length) return;
+      
+      const labels = tickHistory.map(t => formatTime(new Date(t.epoch * 1000)));
+      const prices = tickHistory.map(t => t.quote);
+      
+      // Update price display with latest tick
+      const latestTick = tickHistory[tickHistory.length - 1];
+      lastPrice = updatePriceDisplay(latestTick.quote, lastPrice || latestTick.quote);
 
-      if(chart) chart.destroy();
+      if (chart) chart.destroy();
+      
       chart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -72,164 +334,31 @@
           datasets: [{
             label: 'R_25 Price',
             data: prices,
-            borderColor: '#00e676',
-            backgroundColor: 'rgba(0, 230, 118, 0.2)',
+            borderColor: '#2196f3',
+            backgroundColor: 'rgba(33, 150, 243, 0.1)',
             fill: true,
-            tension: 0.3,
             borderWidth: 2,
-            pointRadius: 0
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            pointHoverBackgroundColor: '#fff',
+            pointHoverBorderColor: '#2196f3',
+            pointHoverBorderWidth: 2
           }]
         },
         options: {
           responsive: true,
-          animation: false,
-          scales: {
-            x: {
-              type: 'category',
-              ticks: { color: "#aaa" },
-              grid: { color: "#333" }
-            },
-            y: {
-              ticks: { color: "#aaa" },
-              grid: { color: "#333" }
-            }
+          maintainAspectRatio: false,
+          interaction: {
+            intersect: false,
+            mode: 'index',
           },
-          plugins: {
-            legend: { labels: { color: "#fff" } }
-          }
-        }
-      });
-    }
-
-    // Create Candlestick Chart for 1-min OHLC Data
-    function createCandlestickChart(candles) {
-      const data = candles.map(c => ({
-        x: new Date(c.time * 1000),
-        o: c.open,
-        h: c.high,
-        l: c.low,
-        c: c.close
-      }));
-
-      if(chart) chart.destroy();
-      chart = new Chart(ctx, {
-        type: 'candlestick',
-        data: {
-          datasets: [{
-            label: 'R_25 1-min OHLC',
-            data: data,
-            color: {
-              up: '#00ff00',
-              down: '#ff0000',
-              unchanged: '#999'
-            }
-          }]
-        },
-        options: {
-          responsive: true,
           animation: false,
           scales: {
             x: {
-              type: 'time',
-              time: {
-                tooltipFormat: 'MMM dd, HH:mm',
-                unit: 'minute',
-                displayFormats: {
-                  minute: 'HH:mm'
-                }
+              grid: {
+                color: 'var(--grid-color)',
+                tickLength: 8
               },
-              ticks: { color: "#aaa" },
-              grid: { color: "#333" }
-            },
-            y: {
-              ticks: { color: "#aaa" },
-              grid: { color: "#333" }
-            }
-          },
-          plugins: {
-            legend: { labels: { color: "#fff" } }
-          }
-        }
-      });
-    }
-
-    async function fetchTicks() {
-      const res = await fetch("/api/ticks");
-      return await res.json();
-    }
-
-    async function fetchCandles() {
-      const res = await fetch("/api/candles");
-      return await res.json();
-    }
-
-    async function updateLineChart() {
-      try {
-        const ticks = await fetchTicks();
-        if (!ticks.length) {
-          statusEl.textContent = "⚠️ No tick data found";
-          return;
-        }
-        lastEpoch = ticks[ticks.length - 1].epoch;
-        createLineChart(ticks);
-        statusEl.textContent = "✅ Connected & Live (Line Chart)";
-
-        // Polling for live update every second
-        setInterval(async () => {
-          const newTicks = await fetchTicks();
-          const latest = newTicks[newTicks.length - 1];
-          if (latest.epoch !== lastEpoch) {
-            lastEpoch = latest.epoch;
-
-            chart.data.labels.push(formatTime(new Date(latest.epoch * 1000)));
-            chart.data.datasets[0].data.push(latest.quote);
-
-            if (chart.data.labels.length > 300) {
-              chart.data.labels.shift();
-              chart.data.datasets[0].data.shift();
-            }
-
-            chart.update();
-          }
-        }, 1000);
-
-      } catch (err) {
-        statusEl.textContent = "❌ Error loading tick data: " + err.message;
-      }
-    }
-
-    async function updateCandlestickChart() {
-      try {
-        const candles = await fetchCandles();
-        if (!candles.length) {
-          statusEl.textContent = "⚠️ No candlestick data found";
-          return;
-        }
-        createCandlestickChart(candles);
-        statusEl.textContent = "✅ Connected & Live (Candlestick Chart)";
-      } catch (err) {
-        statusEl.textContent = "❌ Error loading candlestick data: " + err.message;
-      }
-    }
-
-    async function init() {
-      if(chartTypeSelect.value === "line") {
-        updateLineChart();
-      } else {
-        updateCandlestickChart();
-      }
-    }
-
-    chartTypeSelect.addEventListener("change", () => {
-      statusEl.textContent = "🔄 Loading data...";
-      if(chart) {
-        chart.destroy();
-        chart = null;
-      }
-      init();
-    });
-
-    window.onload = init;
-  </script>
-</body>
-</html>
+              ticks: {
+                color: 'var(--text-secondary)',
+                maxRotation:
