@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>VIX25 Historical Ticks</title>
+  <title>VIX25 Historical Tick Chart</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
@@ -17,10 +17,21 @@
       max-width: 100%;
       height: 400px;
     }
+    .refresh-btn {
+      background: #00e676;
+      border: none;
+      padding: 10px 20px;
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+      margin-bottom: 20px;
+      border-radius: 8px;
+    }
   </style>
 </head>
 <body>
   <h2>📈 VIX25 Historical Tick Chart</h2>
+  <button class="refresh-btn" onclick="renderChart()">🔄 Refresh Data</button>
   <canvas id="tickChart"></canvas>
 
   <script>
@@ -29,7 +40,10 @@
       const data = await res.json();
       if (!data) return [];
 
-      const sortedTicks = Object.values(data).sort((a, b) => a.epoch - b.epoch);
+      const sortedTicks = Object.values(data)
+        .sort((a, b) => a.epoch - b.epoch)
+        .slice(-100); // only latest 100 ticks
+
       return sortedTicks.map(tick => ({
         time: new Date(tick.epoch * 1000).toLocaleTimeString(),
         price: tick.quote
@@ -40,12 +54,14 @@
       const ticks = await fetchTicks();
       const ctx = document.getElementById("tickChart").getContext("2d");
 
-      new Chart(ctx, {
+      if (window.myChart) window.myChart.destroy(); // destroy previous chart
+
+      window.myChart = new Chart(ctx, {
         type: 'line',
         data: {
           labels: ticks.map(t => t.time),
           datasets: [{
-            label: 'Price',
+            label: 'VIX25 Price',
             data: ticks.map(t => t.price),
             borderColor: '#00e676',
             backgroundColor: 'rgba(0, 230, 118, 0.2)',
