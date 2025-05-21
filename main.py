@@ -2,14 +2,10 @@ from fastapi import FastAPI
 from analyzer.analyzer import Analyzer
 from notifier import send_signal_to_telegram
 import asyncio
-import firebase_admin
-from firebase_admin import db, credentials
+import requests
 
-# Initialize Firebase
-cred = credentials.Certificate("firebase-key.json")
-firebase_admin.initialize_app(cred, {
-    "databaseURL": "https://data-364f1-default-rtdb.firebaseio.com/"
-})
+# Your public Firebase Realtime DB URL
+FIREBASE_URL = "https://data-364f1-default-rtdb.firebaseio.com/ticks/Vix25.json"
 
 app = FastAPI()
 analyzer = Analyzer()
@@ -17,19 +13,24 @@ analyzer = Analyzer()
 @app.on_event("startup")
 async def start_stream():
     async def stream_loop():
-        ref = db.reference("ticks/Vix25")
         last_processed = None
         while True:
-            snapshot = ref.order_by_key().limit_to_last(1).get()
-            if snapshot:
-                for key, data in snapshot.items():
-                    if key != last_processed:
-                        last_processed = key
-                        price = float(data["quote"])
-                        timestamp = int(data["epoch"])
+            try:
+                response = requests.get(FIREBASE_URL)
+                data = response.json()
+                if data:
+                    # Get the last item based on sorted keys
+                    last_key = sorted(data.keys())[-1]
+                    if last_key != last_processed:
+                        last_processed = last_key
+                        tick = data[last_key]
+                        price = float(tick["quote"])
+                        timestamp = int(tick["epoch"])
                         signal = analyzer.update(price, timestamp)
                         if signal:
                             send_signal_to_telegram(signal)
+            except Exception as e:
+                print("Error:", e)
             await asyncio.sleep(1)
 
     asyncio.create_task(stream_loop())
