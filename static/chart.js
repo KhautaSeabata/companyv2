@@ -1,26 +1,92 @@
-body {
-  margin: 0;
-  background: #121212;
-  color: #fff;
-  font-family: Arial, sans-serif;
-  text-align: center;
-  padding: 20px;
+let chart;
+const indexSelect = document.getElementById("index-select");
+const tfSelect = document.getElementById("tf-select");
+const connStatus = document.getElementById("connection-status");
+
+function createChart() {
+  const ctx = document.getElementById("chart").getContext("2d");
+  chart = new Chart(ctx, {
+    type: 'candlestick',
+    data: { datasets: [{ label: 'Candles', data: [] }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      scales: {
+        x: { ticks: { color: "#aaa" }, grid: { color: "#333" } },
+        y: { ticks: { color: "#aaa" }, grid: { color: "#333" } }
+      },
+      plugins: {
+        legend: { labels: { color: "#0f0" } }
+      }
+    }
+  });
 }
 
-h2 {
-  color: #00e676;
+function updateChart(candles) {
+  chart.data.datasets[0].data = candles.map(c => ({
+    x: new Date(c.time * 1000),
+    o: c.open,
+    h: c.high,
+    l: c.low,
+    c: c.close,
+  }));
+  chart.update();
+  setTimeout(() => {
+    chart.canvas.parentNode.scrollLeft = chart.canvas.scrollWidth;
+  }, 100);
 }
 
-canvas {
-  max-width: 100%;
-  height: 400px;
-  background: #1e1e1e;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 230, 118, 0.3);
+function connectSocket(index, tf) {
+  const protocol = location.protocol === "https:" ? "wss" : "ws";
+  const socket = new WebSocket(`${protocol}://${location.host}/ws/${index}/${tf}`);
+
+  socket.onopen = () => {
+    connStatus.textContent = "Connected";
+    connStatus.classList.remove("disconnected");
+  };
+
+  socket.onclose = () => {
+    connStatus.textContent = "Disconnected";
+    connStatus.classList.add("disconnected");
+  };
+
+  socket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.candles) {
+      updateChart(data.candles);
+    }
+    if (data.signal) {
+      displaySignal(data.signal);
+    }
+  };
 }
 
-#status {
-  margin: 12px 0;
-  color: #0f0;
-  font-weight: bold;
+function displaySignal(signal) {
+  const container = document.getElementById("signal-list");
+  if (!container) return;
+
+  const html = `
+    <div style="margin-bottom:12px; border-bottom: 1px solid #0f0; padding-bottom: 8px;">
+      <b>Pattern:</b> ${signal.pattern} <br />
+      <b>Entry:</b> ${signal.entry} <br />
+      <b>TP:</b> ${signal.tp} <br />
+      <b>SL:</b> ${signal.sl} <br />
+      <b>Signal Time (JHB):</b> ${new Date(signal.time * 1000).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', hour12: false })} <br />
+      <b>Status:</b> ${signal.status || 'Active'}
+    </div>
+  `;
+
+  // Append new signal on top
+  container.insertAdjacentHTML('afterbegin', html);
 }
+
+function init() {
+  createChart();
+  connectSocket(indexSelect.value, tfSelect.value);
+
+  indexSelect.addEventListener("change", () => location.reload());
+  tfSelect.addEventListener("change", () => location.reload());
+}
+
+window.onload = init;
