@@ -34,22 +34,32 @@
       if (!data) return [];
 
       const sorted = Object.values(data).sort((a, b) => a.epoch - b.epoch);
-      return sorted.slice(-100).map(tick => ({
-        time: new Date(tick.epoch * 1000).toLocaleTimeString(),
+      return sorted.slice(-500).map(tick => ({
+        time: new Date(tick.epoch * 1000),
         price: tick.quote,
         epoch: tick.epoch
       }));
     }
 
+    function formatTime(date) {
+      // Format time as HH:MM for the x-axis
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
     async function initChart() {
       const initialTicks = await fetchLatestTicks();
-      lastEpoch = initialTicks[initialTicks.length - 1]?.epoch;
+      if (initialTicks.length === 0) {
+        document.getElementById("status").textContent = "⚠️ No data found";
+        return;
+      }
+
+      lastEpoch = initialTicks[initialTicks.length - 1].epoch;
 
       const ctx = document.getElementById("tickChart").getContext("2d");
       chart = new Chart(ctx, {
         type: 'line',
         data: {
-          labels: initialTicks.map(t => t.time),
+          labels: initialTicks.map(t => formatTime(t.time)),
           datasets: [{
             label: 'R_25 Price',
             data: initialTicks.map(t => t.price),
@@ -65,8 +75,22 @@
           responsive: true,
           animation: false,
           scales: {
-            x: { ticks: { color: "#aaa" }, grid: { color: "#333" } },
-            y: { ticks: { color: "#aaa" }, grid: { color: "#333" } }
+            x: {
+              type: 'time',
+              time: {
+                unit: 'minute',
+                tooltipFormat: 'HH:mm:ss',
+                displayFormats: {
+                  minute: 'HH:mm'
+                }
+              },
+              ticks: { color: "#aaa", maxRotation: 0, autoSkip: true, maxTicksLimit: 10 },
+              grid: { color: "#333" }
+            },
+            y: {
+              ticks: { color: "#aaa" },
+              grid: { color: "#333" }
+            }
           },
           plugins: {
             legend: { labels: { color: "#fff" } }
@@ -87,13 +111,13 @@
 
       if (latest.epoch !== lastEpoch) {
         lastEpoch = latest.epoch;
-        const time = new Date(latest.epoch * 1000).toLocaleTimeString();
+        const time = new Date(latest.epoch * 1000);
         const price = latest.quote;
 
-        chart.data.labels.push(time);
+        chart.data.labels.push(formatTime(time));
         chart.data.datasets[0].data.push(price);
 
-        if (chart.data.labels.length > 100) {
+        if (chart.data.labels.length > 500) {
           chart.data.labels.shift();
           chart.data.datasets[0].data.shift();
         }
@@ -103,7 +127,7 @@
     }
 
     initChart();
-    setInterval(pollFirebase, 1000); // Check for new tick every 1s
+    setInterval(pollFirebase, 1000);
   </script>
 </body>
 </html>
