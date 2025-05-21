@@ -34,7 +34,7 @@
       if (!data) return [];
 
       const sorted = Object.values(data).sort((a, b) => a.epoch - b.epoch);
-      return sorted.slice(-500).map(tick => ({
+      return sorted.slice(-300).map(tick => ({
         time: new Date(tick.epoch * 1000),
         price: tick.quote,
         epoch: tick.epoch
@@ -42,7 +42,6 @@
     }
 
     function formatTime(date) {
-      // Format time as HH:MM for the x-axis
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
@@ -117,7 +116,7 @@
         chart.data.labels.push(formatTime(time));
         chart.data.datasets[0].data.push(price);
 
-        if (chart.data.labels.length > 500) {
+        if (chart.data.labels.length > 300) {
           chart.data.labels.shift();
           chart.data.datasets[0].data.shift();
         }
