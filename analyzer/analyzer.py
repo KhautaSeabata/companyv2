@@ -1,14 +1,21 @@
-from .head_shoulders import HeadShouldersAnalyzer
+from .hs import HeadShouldersAnalyzer
 from .trendline import TrendlineAnalyzer
-from .double_top_bottom import DoubleTopBottomAnalyzer
-from .channel import ChannelAnalyzer  # Only if you're using channel detection
+from .dtb import DoubleTopBottomAnalyzer
+from .channel import ChannelAnalyzer
 
 class Analyzer:
     def __init__(self):
         self.hs_analyzer = HeadShouldersAnalyzer()
         self.trendline_analyzer = TrendlineAnalyzer()
         self.dtb_analyzer = DoubleTopBottomAnalyzer()
-        self.channel_analyzer = ChannelAnalyzer()  # Comment this line out if you haven't created it yet
+        self.channel_analyzer = ChannelAnalyzer()
+
+    def update(self, price, timestamp):
+        for analyzer in [
+            self.hs_analyzer,
+            self.trendline_analyzer,
+            self.dtb_analyzer,
+            self.channel_analyzer
 
     def analyze(self, candles):
         signals = []
