@@ -1,4 +1,5 @@
 from fastapi import FastAPI, WebSocket
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import asyncio
@@ -13,6 +14,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve the static directory at the /static URL path
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 BASE_URL = "https://vix75-f6684-default-rtdb.firebaseio.com/"
 TICK_PATH = "ticks/R_25.json"
 
@@ -23,19 +27,16 @@ async def fetch_ticks():
             raw = res.json()
             if not raw:
                 return []
-            # Sort ticks by epoch ascending
             ticks = sorted(
                 [{"time": v["epoch"], "price": v["quote"]} for v in raw.values()],
                 key=lambda x: x["time"]
             )
-            # Return last 300 ticks
             return ticks[-300:]
         return []
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-
     try:
         while True:
             ticks = await fetch_ticks()
