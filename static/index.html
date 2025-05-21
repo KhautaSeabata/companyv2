@@ -5,21 +5,199 @@
   <title>R_25 Live Tick Chart</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@3.0.0/dist/chartjs-chart-financial.min.js"></script>
-  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@3.5.0"></script>
+  <style>
+    body {
+      background: #121212;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    canvas {
+      max-width: 100%;
+      height: 400px;
+      background: #1e1e1e;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 230, 118, 0.3);
+    }
+    select {
+      margin-bottom: 15px;
+      font-size: 1rem;
+      padding: 6px 12px;
+      border-radius: 4px;
+      border: none;
+      background: #222;
+      color: #0f0;
+    }
+    #status {
+      margin-bottom: 10px;
+      color: #0f0;
+    }
+  </style>
 </head>
 <body>
   <h2>📈 R_25 Live Chart</h2>
-
-  <label for="chart-type">Select Chart Type: </label>
-  <select id="chart-type">
+  <select id="chartTypeSelect">
     <option value="line">Line Chart (Ticks)</option>
-    <option value="candlestick">Candlestick (1-min OHLC)</option>
+    <option value="candlestick">Candlestick (1minVix25)</option>
   </select>
-
   <div id="status">🔄 Connecting to backend...</div>
-  <canvas id="chartCanvas"></canvas>
+  <canvas id="mainChart"></canvas>
 
-  <script src="chart.js"></script>
+  <script>
+    let chart;
+    const statusEl = document.getElementById("status");
+    const ctx = document.getElementById("mainChart").getContext("2d");
+    const select = document.getElementById("chartTypeSelect");
+
+    // Utility for formatting time for x axis labels
+    function formatTime(date) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // Create line chart (ticks)
+    function createLineChart(ticks) {
+      return new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: ticks.map(t => formatTime(new Date(t.epoch * 1000))),
+          datasets: [{
+            label: 'R_25 Price',
+            data: ticks.map(t => t.quote),
+            borderColor: '#00e676',
+            backgroundColor: 'rgba(0, 230, 118, 0.2)',
+            fill: true,
+            tension: 0.3,
+            borderWidth: 2,
+            pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          animation: false,
+          scales: {
+            x: {
+              type: 'category',
+              ticks: { color: "#aaa" },
+              grid: { color: "#333" }
+            },
+            y: {
+              ticks: { color: "#aaa" },
+              grid: { color: "#333" }
+            }
+          },
+          plugins: {
+            legend: { labels: { color: "#0f0" } }
+          }
+        }
+      });
+    }
+
+    // Create candlestick chart (OHLC)
+    function createCandlestickChart(candles) {
+      return new Chart(ctx, {
+        type: 'candlestick',
+        data: {
+          datasets: [{
+            label: '1minVix25',
+            data: candles.map(c => ({
+              x: new Date(c.time * 1000),
+              o: c.open,
+              h: c.high,
+              l: c.low,
+              c: c.close,
+            }))
+          }]
+        },
+        options: {
+          responsive: true,
+          animation: false,
+          scales: {
+            x: {
+              type: 'time',
+              time: { unit: 'minute' },
+              ticks: { color: "#aaa" },
+              grid: { color: "#333" }
+            },
+            y: {
+              ticks: { color: "#aaa" },
+              grid: { color: "#333" }
+            }
+          },
+          plugins: {
+            legend: { labels: { color: "#0f0" } }
+          }
+        }
+      });
+    }
+
+    // Fetch data from API
+    async function fetchTicks() {
+      try {
+        const res = await fetch("/api/ticks");
+        return await res.json();
+      } catch {
+        return [];
+      }
+    }
+
+    async function fetchCandles() {
+      try {
+        const res = await fetch("/api/1minVix25");
+        return await res.json();
+      } catch {
+        return [];
+      }
+    }
+
+    // Initialize chart with default line chart
+    async function initChart() {
+      statusEl.textContent = "🔄 Loading ticks...";
+      const ticks = await fetchTicks();
+
+      if (!ticks.length) {
+        statusEl.textContent = "⚠️ No tick data found";
+        return;
+      }
+
+      chart = createLineChart(ticks);
+      statusEl.textContent = "✅ Showing Line Chart (Ticks)";
+    }
+
+    // Update chart on selection change
+    select.addEventListener("change", async () => {
+      if (chart) {
+        chart.destroy();
+        chart = null;
+      }
+
+      if (select.value === "line") {
+        statusEl.textContent = "🔄 Loading ticks...";
+        const ticks = await fetchTicks();
+
+        if (!ticks.length) {
+          statusEl.textContent = "⚠️ No tick data found";
+          return;
+        }
+        chart = createLineChart(ticks);
+        statusEl.textContent = "✅ Showing Line Chart (Ticks)";
+      }
+      else if (select.value === "candlestick") {
+        statusEl.textContent = "🔄 Loading candlesticks...";
+        const candles = await fetchCandles();
+
+        if (!candles.length) {
+          statusEl.textContent = "⚠️ No candle data found";
+          return;
+        }
+        chart = createCandlestickChart(candles);
+        statusEl.textContent = "✅ Showing Candlestick Chart (1minVix25)";
+      }
+    });
+
+    // Load initial chart
+    initChart();
+  </script>
 </body>
 </html>
