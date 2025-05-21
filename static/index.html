@@ -17,10 +17,29 @@
     canvas {
       max-width: 100%;
       height: 400px;
+      background: #1e1e1e;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 230, 118, 0.3);
     }
     #status {
       margin-bottom: 10px;
       color: #0f0;
+    }
+    #signals {
+      margin-top: 20px;
+      background: #222;
+      border-radius: 8px;
+      padding: 10px;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+      text-align: left;
+      font-family: monospace;
+      color: #0f0;
+    }
+    #signals h3 {
+      margin-top: 0;
+      color: #00e676;
     }
   </style>
 </head>
@@ -29,12 +48,18 @@
   <div id="status">🔄 Connecting to backend...</div>
   <canvas id="tickChart"></canvas>
 
+  <div id="signals">
+    <h3>Active Signals</h3>
+    <div id="signal-list">No active signals</div>
+  </div>
+
   <script>
     let chart;
     let lastEpoch = null;
+    let activeSignals = {};
 
     function formatTime(date) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return date.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
 
     async function fetchLatestTicks() {
@@ -95,6 +120,26 @@
       document.getElementById("status").textContent = "✅ Connected & Live";
     }
 
+    function updateSignalsDisplay() {
+      const container = document.getElementById("signal-list");
+      const signalsArray = Object.values(activeSignals);
+      if (signalsArray.length === 0) {
+        container.textContent = "No active signals";
+        return;
+      }
+
+      container.innerHTML = signalsArray.map(sig => `
+        <div style="margin-bottom:12px; border-bottom: 1px solid #0f0; padding-bottom: 8px;">
+          <b>Pattern:</b> ${sig.pattern} <br />
+          <b>Entry:</b> ${sig.entry} <br />
+          <b>TP:</b> ${sig.tp} <br />
+          <b>SL:</b> ${sig.sl} <br />
+          <b>Signal Time (JHB):</b> ${new Date(sig.time * 1000).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', hour12: false })} <br />
+          <b>Status:</b> ${sig.status || 'Active'}
+        </div>
+      `).join('');
+    }
+
     async function pollFirebase() {
       const res = await fetch("/api/ticks");
       const data = await res.json();
@@ -115,6 +160,22 @@
 
         chart.update();
       }
+
+      // Fetch latest signals from API
+      const sigRes = await fetch("/api/signals");
+      const signals = await sigRes.json();
+
+      // Update activeSignals dictionary keyed by a unique signal id (or time+entry)
+      activeSignals = {};
+      signals.forEach(sig => {
+        // Add default status field
+        activeSignals[`${sig.pattern}-${sig.entry}-${sig.time}`] = {
+          ...sig,
+          status: sig.status || "Active"
+        };
+      });
+
+      updateSignalsDisplay();
     }
 
     initChart();
