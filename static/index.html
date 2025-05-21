@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Vix25 Live Chart</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vix25 Live Chart with Signals</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
@@ -11,85 +12,40 @@
       font-family: Arial, sans-serif;
       padding: 20px;
     }
-    canvas {
-      background: #222;
-      border: 1px solid #333;
+    #chart-container {
+      width: 100%;
       max-width: 1000px;
       height: 400px;
-      display: block;
-      margin: auto;
+      background: #222;
+      border: 1px solid #444;
+      margin-bottom: 20px;
+    }
+    #signal-list {
+      max-width: 1000px;
+      background: #1a1a1a;
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #333;
+    }
+    .signal {
+      border-left: 4px solid #0ff;
+      background: #2a2a2a;
+      padding: 10px;
+      margin-bottom: 10px;
     }
   </style>
 </head>
 <body>
-  <h2>📈 Vix25 Live Price Chart (last 300 ticks)</h2>
-  <canvas id="lineChart"></canvas>
+  <h1>📈 Vix25 Live Price Chart with Pattern Signals</h1>
 
-  <script>
-    const ctx = document.getElementById('lineChart').getContext('2d');
+  <div id="chart-container">
+    <canvas id="lineChart"></canvas>
+  </div>
 
-    const chart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: [],
-        datasets: [{
-          label: 'Vix25 Price',
-          data: [],
-          borderColor: '#0ff',
-          backgroundColor: 'rgba(0, 255, 255, 0.1)',
-          borderWidth: 2,
-          pointRadius: 0,
-          fill: true,
-          tension: 0.1
-        }]
-      },
-      options: {
-        animation: false,
-        responsive: true,
-        scales: {
-          x: {
-            ticks: { color: '#ccc' },
-            type: 'time',
-            time: { tooltipFormat: 'HH:mm:ss', unit: 'minute', displayFormats: {minute: 'HH:mm'} },
-            grid: { color: '#333' }
-          },
-          y: {
-            ticks: { color: '#ccc' },
-            grid: { color: '#333' }
-          }
-        },
-        plugins: {
-          legend: { labels: { color: '#0ff' } }
-        }
-      }
-    });
+  <div id="signal-list">
+    <strong>Signals will appear here</strong>
+  </div>
 
-    const wsProtocol = location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(`${wsProtocol}://${location.host}/ws`);
-
-    ws.onopen = () => {
-      console.log('WebSocket connected');
-    };
-
-    ws.onerror = () => {
-      console.error('WebSocket error');
-    };
-
-    ws.onclose = () => {
-      console.warn('WebSocket disconnected');
-    };
-
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.ticks) {
-        const labels = msg.ticks.map(t => new Date(t.time * 1000));
-        const data = msg.ticks.map(t => t.price);
-
-        chart.data.labels = labels;
-        chart.data.datasets[0].data = data;
-        chart.update();
-      }
-    };
-  </script>
+  <script src="chart.js"></script>
 </body>
 </html>
