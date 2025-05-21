@@ -1,13 +1,18 @@
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from analyzer.analyzer import Analyzer
-import asyncio, httpx, uuid
-from datetime import datetime
+from analyzer.analyzer import Analyzer  # your analyzer module
+import asyncio
+import httpx
+import uuid
 
 app = FastAPI()
+
 app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_credentials=True,
-    allow_methods=["*"], allow_headers=["*"]
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 BASE_URL = "https://vix75-f6684-default-rtdb.firebaseio.com/"
@@ -24,7 +29,9 @@ async def fetch_ticks():
         res = await client.get(BASE_URL + TICK_PATH)
         if res.status_code == 200:
             raw = res.json()
-            if not raw: return []
+            if not raw:
+                return []
+            # Sort ticks by epoch time ascending
             return sorted(
                 [{"time": v["epoch"], "price": v["quote"]} for v in raw.values()],
                 key=lambda x: x["time"]
@@ -38,7 +45,7 @@ async def store_signal(signal):
         "tp": signal["tp"],
         "sl": signal["sl"],
         "status": "active",
-        "entry_time": signal["time"]
+        "entry_time": signal["time"],
     }
     url = f"{BASE_URL}{SIGNAL_PATH}/{signal_id}.json"
     async with httpx.AsyncClient() as client:
@@ -49,7 +56,7 @@ async def fetch_active_signals():
     async with httpx.AsyncClient() as client:
         res = await client.get(url)
         if res.status_code == 200 and res.json():
-            return {k: v for k, v in res.json().items() if v["status"] == "active"}
+            return {k: v for k, v in res.json().items() if v.get("status") == "active"}
     return {}
 
 async def update_signal_status(signal_id, status):
@@ -69,35 +76,41 @@ async def websocket_endpoint(websocket: WebSocket):
                 await asyncio.sleep(1)
                 continue
 
+            # Send ticks to client
             await websocket.send_json({"ticks": ticks})
             latest_price = ticks[-1]["price"]
 
-            # Check existing signals
+            # Fetch active signals from Firebase
             active_signals = await fetch_active_signals()
             to_display = []
 
             for sig_id, sig in active_signals.items():
-                if sig["sl"] and latest_price <= sig["sl"]:
+                sl = sig.get("sl")
+                tp = sig.get("tp")
+                # Check if SL or TP hit to mark complete
+                if sl is not None and latest_price <= sl:
                     await update_signal_status(sig_id, "complete")
-                elif sig["tp"] and latest_price >= sig["tp"]:
+                elif tp is not None and latest_price >= tp:
                     await update_signal_status(sig_id, "complete")
                 else:
                     to_display.append({
                         "id": sig_id,
-                        "entry": sig["entry"],
-                        "tp": sig["tp"],
-                        "sl": sig["sl"],
-                        "entry_time": sig["entry_time"]
+                        "entry": sig.get("entry"),
+                        "tp": tp,
+                        "sl": sl,
+                        "entry_time": sig.get("entry_time"),
                     })
 
+            # Send active signals to client
             await websocket.send_json({"signals": to_display})
 
-            # Analyze new signal
+            # Detect new signal from analyzer
             signal = analyzer.detect(ticks)
-            if signal and (not last_signal_time or signal["time"] != last_signal_time):
+            if signal and (last_signal_time is None or signal["time"] != last_signal_time):
                 last_signal_time = signal["time"]
                 await store_signal(signal)
 
             await asyncio.sleep(1)
+
     except Exception as e:
-        print("WebSocket Error:", e)
+        print("WebSocket disconnected:", e)
