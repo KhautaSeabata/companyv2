@@ -2,70 +2,89 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>VIX25 Live</title>
+  <title>VIX25 Historical Tick Chart</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="/static/style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      background: #121212;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+    }
+    canvas {
+      max-width: 100%;
+      height: 400px;
+    }
+    .refresh-btn {
+      background: #00e676;
+      border: none;
+      padding: 10px 20px;
+      color: #000;
+      font-weight: bold;
+      cursor: pointer;
+      margin-bottom: 20px;
+      border-radius: 8px;
+    }
+  </style>
 </head>
 <body>
-  <h2>VIX25 - Live Ticks</h2>
-  <canvas id="chart"></canvas>
-  <div class="price" id="price">Latest Price: --</div>
+  <h2>📈 VIX25 Historical Tick Chart</h2>
+  <button class="refresh-btn" onclick="renderChart()">🔄 Refresh Data</button>
+  <canvas id="tickChart"></canvas>
 
   <script>
-    const ctx = document.getElementById('chart').getContext('2d');
-    const chart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: [],
-        datasets: [{
-          label: 'VIX25 Price',
-          data: [],
-          borderColor: '#00e676',
-          backgroundColor: 'rgba(0, 230, 118, 0.2)',
-          tension: 0.3,
-          fill: true,
-          borderWidth: 2,
-          pointRadius: 0
-        }]
-      },
-      options: {
-        responsive: true,
-        animation: false,
-        scales: {
-          x: {
-            ticks: { color: '#aaa' },
-            grid: { color: '#333' }
-          },
-          y: {
-            ticks: { color: '#aaa' },
-            grid: { color: '#333' }
-          }
+    async function fetchTicks() {
+      const res = await fetch("https://data-364f1-default-rtdb.firebaseio.com/vix25.json");
+      const data = await res.json();
+      if (!data) return [];
+
+      const sortedTicks = Object.values(data)
+        .sort((a, b) => a.epoch - b.epoch)
+        .slice(-100); // only latest 100 ticks
+
+      return sortedTicks.map(tick => ({
+        time: new Date(tick.epoch * 1000).toLocaleTimeString(),
+        price: tick.quote
+      }));
+    }
+
+    async function renderChart() {
+      const ticks = await fetchTicks();
+      const ctx = document.getElementById("tickChart").getContext("2d");
+
+      if (window.myChart) window.myChart.destroy(); // destroy previous chart
+
+      window.myChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: ticks.map(t => t.time),
+          datasets: [{
+            label: 'VIX25 Price',
+            data: ticks.map(t => t.price),
+            borderColor: '#00e676',
+            backgroundColor: 'rgba(0, 230, 118, 0.2)',
+            fill: true,
+            tension: 0.3,
+            borderWidth: 2,
+            pointRadius: 0
+          }]
         },
-        plugins: {
-          legend: { labels: { color: '#fff' } }
+        options: {
+          responsive: true,
+          scales: {
+            x: { ticks: { color: "#aaa" }, grid: { color: "#333" } },
+            y: { ticks: { color: "#aaa" }, grid: { color: "#333" } }
+          },
+          plugins: {
+            legend: { labels: { color: "#fff" } }
+          }
         }
-      }
-    });
+      });
+    }
 
-    const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/vix25`);
-
-    ws.onmessage = (event) => {
-      const tick = JSON.parse(event.data);
-      const label = new Date(tick.epoch * 1000).toLocaleTimeString();
-      const price = tick.quote;
-
-      chart.data.labels.push(label);
-      chart.data.datasets[0].data.push(price);
-
-      if (chart.data.labels.length > 60) {
-        chart.data.labels.shift();
-        chart.data.datasets[0].data.shift();
-      }
-
-      chart.update();
-      document.getElementById('price').textContent = `Latest Price: ${price}`;
-    };
+    renderChart();
   </script>
 </body>
 </html>
