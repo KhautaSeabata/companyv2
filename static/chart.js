@@ -56,7 +56,29 @@ function connectSocket(index, tf) {
     if (data.candles) {
       updateChart(data.candles);
     }
+    if (data.signal) {
+      displaySignal(data.signal);
+    }
   };
+}
+
+function displaySignal(signal) {
+  const container = document.getElementById("signal-list");
+  if (!container) return;
+
+  const html = `
+    <div style="margin-bottom:12px; border-bottom: 1px solid #0f0; padding-bottom: 8px;">
+      <b>Pattern:</b> ${signal.pattern} <br />
+      <b>Entry:</b> ${signal.entry} <br />
+      <b>TP:</b> ${signal.tp} <br />
+      <b>SL:</b> ${signal.sl} <br />
+      <b>Signal Time (JHB):</b> ${new Date(signal.time * 1000).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', hour12: false })} <br />
+      <b>Status:</b> ${signal.status || 'Active'}
+    </div>
+  `;
+
+  // Append new signal on top
+  container.insertAdjacentHTML('afterbegin', html);
 }
 
 function init() {
