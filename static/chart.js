@@ -2,7 +2,6 @@ let chart;
 const signalList = document.getElementById("signal-list");
 
 function createChart() {
-  console.log("Creating chart...");
   const ctx = document.getElementById("lineChart").getContext("2d");
   chart = new Chart(ctx, {
     type: "line",
@@ -26,9 +25,7 @@ function createChart() {
           time: {
             tooltipFormat: 'HH:mm:ss',
             unit: 'second',
-            displayFormats: {
-              second: 'HH:mm:ss'
-            }
+            displayFormats: { second: 'HH:mm:ss' }
           },
           ticks: { color: "#aaa" },
           grid: { color: "#333" }
@@ -43,7 +40,6 @@ function createChart() {
       }
     }
   });
-  console.log("Chart created:", chart);
 }
 
 function updateChart(ticks) {
@@ -55,6 +51,7 @@ function updateChart(ticks) {
 
 function displaySignal(signal) {
   if (!signalList) return;
+  if (!signal) return;
   const html = `
     <div class="signal">
       <b>Pattern:</b> ${signal.pattern} <br />
@@ -88,9 +85,7 @@ function connectWebSocket() {
   };
 
   ws.onmessage = (event) => {
-    // console.log("WebSocket message received:", event.data);
     const msg = JSON.parse(event.data);
-
     if (msg.ticks) {
       updateChart(msg.ticks);
     }
