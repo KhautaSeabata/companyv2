@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>VIX25 Historical Tick Chart</title>
+  <title>R_25 Historical Tick Chart</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
@@ -30,21 +30,21 @@
   </style>
 </head>
 <body>
-  <h2>📈 VIX25 Historical Tick Chart</h2>
-  <button class="refresh-btn" onclick="renderChart()">🔄 Refresh Data</button>
+  <h2>📈 R_25 Historical Tick Chart</h2>
+  <button class="refresh-btn" onclick="renderChart()">🔄 Refresh</button>
   <canvas id="tickChart"></canvas>
 
   <script>
     async function fetchTicks() {
-      const res = await fetch("https://data-364f1-default-rtdb.firebaseio.com/vix25.json");
+      const res = await fetch("https://data-364f1-default-rtdb.firebaseio.com/ticks/R_25.json");
       const data = await res.json();
       if (!data) return [];
 
-      const sortedTicks = Object.values(data)
+      const sorted = Object.values(data)
         .sort((a, b) => a.epoch - b.epoch)
-        .slice(-100); // only latest 100 ticks
+        .slice(-100); // latest 100 ticks
 
-      return sortedTicks.map(tick => ({
+      return sorted.map(tick => ({
         time: new Date(tick.epoch * 1000).toLocaleTimeString(),
         price: tick.quote
       }));
@@ -54,14 +54,14 @@
       const ticks = await fetchTicks();
       const ctx = document.getElementById("tickChart").getContext("2d");
 
-      if (window.myChart) window.myChart.destroy(); // destroy previous chart
+      if (window.myChart) window.myChart.destroy();
 
       window.myChart = new Chart(ctx, {
         type: 'line',
         data: {
           labels: ticks.map(t => t.time),
           datasets: [{
-            label: 'VIX25 Price',
+            label: 'R_25 Price',
             data: ticks.map(t => t.price),
             borderColor: '#00e676',
             backgroundColor: 'rgba(0, 230, 118, 0.2)',
