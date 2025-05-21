@@ -1,40 +1,60 @@
-from fastapi import FastAPI
-from analyzer.analyzer import Analyzer
-from notifier import send_signal_to_telegram
+import os
 import asyncio
-import requests
-
-# Your public Firebase Realtime DB URL
-FIREBASE_URL = "https://data-364f1-default-rtdb.firebaseio.com/ticks/Vix25.json"
+import time
+import json
+from fastapi import FastAPI, WebSocket, Request, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import websockets
 
 app = FastAPI()
-analyzer = Analyzer()
 
-@app.on_event("startup")
-async def start_stream():
-    async def stream_loop():
-        last_processed = None
+# Serve static files (e.g., index.html, style.css)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Serve index.html for GET and HEAD requests
+@app.api_route("/", methods=["GET", "HEAD"])
+async def get_index(request: Request):
+    if request.method == "HEAD":
+        return ""
+    return FileResponse("static/index.html")
+
+# WebSocket endpoint
+@app.websocket("/ws/{index}")
+async def websocket_endpoint(websocket: WebSocket, index: str):
+    await websocket.accept()
+    print(f"Client connected for index: {index}")
+
+    try:
         while True:
             try:
-                response = requests.get(FIREBASE_URL)
-                data = response.json()
-                if data:
-                    # Get the last item based on sorted keys
-                    last_key = sorted(data.keys())[-1]
-                    if last_key != last_processed:
-                        last_processed = last_key
-                        tick = data[last_key]
-                        price = float(tick["quote"])
-                        timestamp = int(tick["epoch"])
-                        signal = analyzer.update(price, timestamp)
-                        if signal:
-                            send_signal_to_telegram(signal)
-            except Exception as e:
-                print("Error:", e)
-            await asyncio.sleep(1)
+                # Connect to Deriv WebSocket API
+                async with websockets.connect("wss://ws.deriv.com/websockets/v3?app_id=1089") as deriv_ws:
+                    await deriv_ws.send(json.dumps({
+                        "ticks": index,
+                        "subscribe": 1
+                    }))
 
-    asyncio.create_task(stream_loop())
+                    while True:
+                        msg = await deriv_ws.recv()
+                        data = json.loads(msg)
 
-@app.get("/")
-def home():
-    return {"status": "running"}
+                        # Send to frontend only if tick data exists
+                        if "tick" in data:
+                            await websocket.send_json(data)
+
+            except (websockets.ConnectionClosed, websockets.WebSocketException, asyncio.TimeoutError) as e:
+                print(f"[Deriv WS Error] {e}, reconnecting in 3s...")
+                await asyncio.sleep(3)  # Wait and reconnect
+
+    except WebSocketDisconnect:
+        print(f"Client disconnected from index: {index}")
+    except Exception as e:
+        print(f"[App Error] {e}")
+        await websocket.close()
+
+# Run locally or on Render
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

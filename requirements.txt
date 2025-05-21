@@ -1,7 +1,6 @@
 fastapi
-uvicorn
-python-multipart
-firebase-admin
-httpx
-pytz
+fastapi
+uvicorn[standard]
+websockets
+aiohttp
 numpy
