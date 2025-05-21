@@ -1,81 +1,46 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Vix25 Live Chart</title>
-  
-  <!-- Chart.js core -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Chartjs Financial plugin for candlesticks -->
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@3.0.0"></script>
-  
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #111;
-      color: #eee;
-      padding: 20px;
-    }
-    #chart-container {
-      position: relative;
-      height: 400px;
-      width: 100%;
-      max-width: 1000px;
-      margin-bottom: 20px;
-    }
-    #connection-status {
-      margin-bottom: 10px;
-    }
-    #connection-status.disconnected {
-      color: red;
-    }
-    select {
-      margin-right: 10px;
-      padding: 5px;
-      background: #222;
-      border: 1px solid #444;
-      color: #eee;
-    }
-    #signal-list {
-      max-width: 1000px;
-      background: #222;
-      padding: 10px;
-      border-radius: 5px;
-      border: 1px solid #444;
-      max-height: 300px;
-      overflow-y: auto;
-    }
-  </style>
-</head>
-<body>
-  <h2>📈 Vix25 Live Chart with Signals</h2>
-  
-  <label for="index-select">Index:</label>
-  <select id="index-select">
-    <option value="R_25" selected>Vix25</option>
-    <!-- Add other indices here -->
-  </select>
-  
-  <label for="tf-select">Timeframe:</label>
-  <select id="tf-select">
-    <option value="tick" selected>Tick</option>
-    <option value="1m">1m</option>
-    <option value="5m">5m</option>
-    <!-- Add more timeframes -->
-  </select>
-  
-  <div id="connection-status" class="disconnected">Disconnected</div>
+from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
+import httpx
+import asyncio
 
-  <div id="chart-container">
-    <canvas id="chart"></canvas>
-  </div>
+app = FastAPI()
 
-  <div id="signal-list">
-    <b>Active Signals:</b>
-  </div>
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-  <!-- Load your external chart.js script which handles the chart and websocket -->
-  <script src="chart.js"></script>
-</body>
-</html>
+BASE_URL = "https://vix75-f6684-default-rtdb.firebaseio.com/"
+TICK_PATH = "ticks/R_25.json"
+
+async def fetch_ticks():
+    async with httpx.AsyncClient() as client:
+        res = await client.get(BASE_URL + TICK_PATH)
+        if res.status_code == 200:
+            raw = res.json()
+            if not raw:
+                return []
+            # Sort ticks by epoch ascending
+            ticks = sorted(
+                [{"time": v["epoch"], "price": v["quote"]} for v in raw.values()],
+                key=lambda x: x["time"]
+            )
+            # Return last 300 ticks
+            return ticks[-300:]
+        return []
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+
+    try:
+        while True:
+            ticks = await fetch_ticks()
+            if ticks:
+                await websocket.send_json({"ticks": ticks})
+            await asyncio.sleep(1)
+    except Exception as e:
+        print(f"WebSocket disconnected: {e}")
