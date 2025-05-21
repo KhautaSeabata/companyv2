@@ -1,92 +1,187 @@
-let chart;
-const indexSelect = document.getElementById("index-select");
-const tfSelect = document.getElementById("tf-select");
-const connStatus = document.getElementById("connection-status");
+let chart = null;
+const ctx = document.getElementById("chartCanvas").getContext("2d");
+const statusEl = document.getElementById("status");
+const chartTypeSelect = document.getElementById("chart-type");
 
-function createChart() {
-  const ctx = document.getElementById("chart").getContext("2d");
+let lastTickEpoch = null;
+let lastCandleTime = null;
+
+function formatTime(date) {
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+async function fetchTicks() {
+  const res = await fetch("/api/ticks");
+  const data = await res.json();
+  return data;
+}
+
+async function fetchCandles() {
+  const res = await fetch("/api/1minVix25");
+  const data = await res.json();
+  return data;
+}
+
+function createLineChart(ticks) {
+  if (chart) chart.destroy();
+
+  const labels = ticks.map(t => formatTime(new Date(t.epoch * 1000)));
+  const prices = ticks.map(t => t.quote);
+
   chart = new Chart(ctx, {
-    type: 'candlestick',
-    data: { datasets: [{ label: 'Candles', data: [] }] },
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'R_25 Price',
+        data: prices,
+        borderColor: '#00e676',
+        backgroundColor: 'rgba(0, 230, 118, 0.2)',
+        fill: true,
+        tension: 0.3,
+        borderWidth: 2,
+        pointRadius: 0
+      }]
+    },
     options: {
       responsive: true,
-      maintainAspectRatio: false,
       animation: false,
       scales: {
-        x: { ticks: { color: "#aaa" }, grid: { color: "#333" } },
-        y: { ticks: { color: "#aaa" }, grid: { color: "#333" } }
+        x: {
+          ticks: { color: "#aaa" },
+          grid: { color: "#333" }
+        },
+        y: {
+          ticks: { color: "#aaa" },
+          grid: { color: "#333" }
+        }
       },
       plugins: {
-        legend: { labels: { color: "#0f0" } }
+        legend: { labels: { color: "#fff" } }
       }
     }
   });
 }
 
-function updateChart(candles) {
-  chart.data.datasets[0].data = candles.map(c => ({
+function createCandlestickChart(candles) {
+  if (chart) chart.destroy();
+
+  const data = candles.map(c => ({
     x: new Date(c.time * 1000),
     o: c.open,
     h: c.high,
     l: c.low,
-    c: c.close,
+    c: c.close
   }));
-  chart.update();
-  setTimeout(() => {
-    chart.canvas.parentNode.scrollLeft = chart.canvas.scrollWidth;
-  }, 100);
-}
 
-function connectSocket(index, tf) {
-  const protocol = location.protocol === "https:" ? "wss" : "ws";
-  const socket = new WebSocket(`${protocol}://${location.host}/ws/${index}/${tf}`);
-
-  socket.onopen = () => {
-    connStatus.textContent = "Connected";
-    connStatus.classList.remove("disconnected");
-  };
-
-  socket.onclose = () => {
-    connStatus.textContent = "Disconnected";
-    connStatus.classList.add("disconnected");
-  };
-
-  socket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (data.candles) {
-      updateChart(data.candles);
+  chart = new Chart(ctx, {
+    type: 'candlestick',
+    data: {
+      datasets: [{
+        label: 'R_25 1-min OHLC',
+        data: data,
+        color: {
+          up: '#00ff00',
+          down: '#ff0000',
+          unchanged: '#999'
+        }
+      }]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      scales: {
+        x: {
+          type: 'time',
+          time: {
+            tooltipFormat: 'MMM dd, HH:mm',
+            unit: 'minute',
+            displayFormats: {
+              minute: 'HH:mm'
+            }
+          },
+          ticks: { color: "#aaa" },
+          grid: { color: "#333" }
+        },
+        y: {
+          ticks: { color: "#aaa" },
+          grid: { color: "#333" }
+        }
+      },
+      plugins: {
+        legend: { labels: { color: "#fff" } },
+        tooltip: {
+          enabled: true,
+          mode: 'nearest',
+          intersect: false,
+          callbacks: {
+            label: function(context) {
+              const o = context.raw.o;
+              const h = context.raw.h;
+              const l = context.raw.l;
+              const c = context.raw.c;
+              return `O: ${o}  H: ${h}  L: ${l}  C: ${c}`;
+            }
+          }
+        }
+      }
     }
-    if (data.signal) {
-      displaySignal(data.signal);
-    }
-  };
+  });
 }
 
-function displaySignal(signal) {
-  const container = document.getElementById("signal-list");
-  if (!container) return;
+async function updateLineChart() {
+  const ticks = await fetchTicks();
+  if (!ticks.length) {
+    statusEl.textContent = "⚠️ No tick data found";
+    return;
+  }
 
-  const html = `
-    <div style="margin-bottom:12px; border-bottom: 1px solid #0f0; padding-bottom: 8px;">
-      <b>Pattern:</b> ${signal.pattern} <br />
-      <b>Entry:</b> ${signal.entry} <br />
-      <b>TP:</b> ${signal.tp} <br />
-      <b>SL:</b> ${signal.sl} <br />
-      <b>Signal Time (JHB):</b> ${new Date(signal.time * 1000).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', hour12: false })} <br />
-      <b>Status:</b> ${signal.status || 'Active'}
-    </div>
-  `;
+  // Only update if new data available
+  const newestEpoch = ticks[ticks.length -1].epoch;
+  if (lastTickEpoch === newestEpoch) return;
 
-  // Append new signal on top
-  container.insertAdjacentHTML('afterbegin', html);
+  lastTickEpoch = newestEpoch;
+
+  createLineChart(ticks);
+  statusEl.textContent = "✅ Connected & Live (Line Chart)";
 }
 
-function init() {
-  createChart();
-  connectSocket(indexSelect.value, tfSelect.value);
+async function updateCandlestickChart() {
+  const candles = await fetchCandles();
+  if (!candles.length) {
+    statusEl.textContent = "⚠️ No OHLC data found";
+    return;
+  }
 
-  indexSelect.addEventListener("change", () => location.reload());
-  tfSelect.addEventListener("change", () => location.reload());
+  // Only update if new candle available
+  const newestTime = candles[candles.length -1].time;
+  if (lastCandleTime === newestTime) return;
+
+  lastCandleTime = newestTime;
+
+  createCandlestickChart(candles);
+  statusEl.textContent = "✅ Connected & Live (Candlestick Chart)";
 }
 
-window.onload = init;
+async function refreshChart() {
+  const chartType = chartTypeSelect.value;
+  if (chartType === "line") {
+    await updateLineChart();
+  } else {
+    await updateCandlestickChart();
+  }
+}
+
+// Initial load & polling every 1 sec
+async function init() {
+  await refreshChart();
+  setInterval(refreshChart, 1000);
+}
+
+chartTypeSelect.addEventListener("change", async () => {
+  lastTickEpoch = null;
+  lastCandleTime = null;
+  await refreshChart();
+});
+
+init();
