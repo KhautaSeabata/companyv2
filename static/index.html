@@ -17,51 +17,52 @@
       max-width: 100%;
       height: 400px;
     }
+    #status {
+      margin-bottom: 10px;
+      color: #0f0;
+    }
   </style>
 </head>
 <body>
   <h2>📈 R_25 Live Tick Chart</h2>
-  <div id="status">🔄 Connecting to Firebase...</div>
+  <div id="status">🔄 Connecting to backend...</div>
   <canvas id="tickChart"></canvas>
 
   <script>
     let chart;
     let lastEpoch = null;
 
-    async function fetchLatestTicks() {
-      const res = await fetch("https://data-364f1-default-rtdb.firebaseio.com/ticks/R_25.json");
-      const data = await res.json();
-      if (!data) return [];
+    function formatTime(date) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
 
-      const sorted = Object.values(data).sort((a, b) => a.epoch - b.epoch);
-      return sorted.slice(-300).map(tick => ({
+    async function fetchLatestTicks() {
+      const res = await fetch("/api/ticks");
+      const data = await res.json();
+      return data.map(tick => ({
         time: new Date(tick.epoch * 1000),
         price: tick.quote,
         epoch: tick.epoch
       }));
     }
 
-    function formatTime(date) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-
     async function initChart() {
-      const initialTicks = await fetchLatestTicks();
-      if (initialTicks.length === 0) {
+      const ticks = await fetchLatestTicks();
+      if (!ticks.length) {
         document.getElementById("status").textContent = "⚠️ No data found";
         return;
       }
 
-      lastEpoch = initialTicks[initialTicks.length - 1].epoch;
+      lastEpoch = ticks[ticks.length - 1].epoch;
 
       const ctx = document.getElementById("tickChart").getContext("2d");
       chart = new Chart(ctx, {
         type: 'line',
         data: {
-          labels: initialTicks.map(t => formatTime(t.time)),
+          labels: ticks.map(t => formatTime(t.time)),
           datasets: [{
             label: 'R_25 Price',
-            data: initialTicks.map(t => t.price),
+            data: ticks.map(t => t.price),
             borderColor: '#00e676',
             backgroundColor: 'rgba(0, 230, 118, 0.2)',
             fill: true,
@@ -75,15 +76,8 @@
           animation: false,
           scales: {
             x: {
-              type: 'time',
-              time: {
-                unit: 'minute',
-                tooltipFormat: 'HH:mm:ss',
-                displayFormats: {
-                  minute: 'HH:mm'
-                }
-              },
-              ticks: { color: "#aaa", maxRotation: 0, autoSkip: true, maxTicksLimit: 10 },
+              type: 'category',
+              ticks: { color: "#aaa" },
               grid: { color: "#333" }
             },
             y: {
@@ -97,16 +91,13 @@
         }
       });
 
-      document.getElementById("status").textContent = "✅ Live chart connected";
+      document.getElementById("status").textContent = "✅ Connected & Live";
     }
 
     async function pollFirebase() {
-      const res = await fetch("https://data-364f1-default-rtdb.firebaseio.com/ticks/R_25.json");
+      const res = await fetch("/api/ticks");
       const data = await res.json();
-      if (!data) return;
-
-      const sorted = Object.values(data).sort((a, b) => a.epoch - b.epoch);
-      const latest = sorted[sorted.length - 1];
+      const latest = data[data.length - 1];
 
       if (latest.epoch !== lastEpoch) {
         lastEpoch = latest.epoch;
