@@ -1,7 +1,7 @@
 from .head_shoulders import HeadShouldersAnalyzer
 from .trendline import TrendlineAnalyzer
 from .double_top_bottom import DoubleTopBottomAnalyzer
-from .channel import ChannelAnalyzer  # If you've added this
+from .channel import ChannelAnalyzer  # Only if you're using it
 
 class Analyzer:
     def __init__(self):
