@@ -2,143 +2,80 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Vix25 Live Chart with Signals</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vix25 Live Chart</title>
+  
+  <!-- Chart.js core -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Chartjs Financial plugin for candlesticks -->
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@3.0.0"></script>
+  
   <style>
     body {
       font-family: Arial, sans-serif;
       background: #111;
-      color: #f0f0f0;
+      color: #eee;
       padding: 20px;
     }
-    canvas {
-      background: #222;
-      border: 1px solid #333;
+    #chart-container {
+      position: relative;
+      height: 400px;
+      width: 100%;
+      max-width: 1000px;
+      margin-bottom: 20px;
     }
-    #signalBox {
-      margin-top: 20px;
-      background: #1a1a1a;
-      padding: 15px;
-      border-radius: 8px;
-      border: 1px solid #333;
-    }
-    .signal {
+    #connection-status {
       margin-bottom: 10px;
+    }
+    #connection-status.disconnected {
+      color: red;
+    }
+    select {
+      margin-right: 10px;
+      padding: 5px;
+      background: #222;
+      border: 1px solid #444;
+      color: #eee;
+    }
+    #signal-list {
+      max-width: 1000px;
+      background: #222;
       padding: 10px;
-      border-left: 4px solid #0ff;
-      background: #2a2a2a;
+      border-radius: 5px;
+      border: 1px solid #444;
+      max-height: 300px;
+      overflow-y: auto;
     }
   </style>
 </head>
 <body>
-  <h2>📈 Vix25 Live Price Chart with Pattern Signals</h2>
-  <canvas id="lineChart" width="1000" height="400"></canvas>
+  <h2>📈 Vix25 Live Chart with Signals</h2>
+  
+  <label for="index-select">Index:</label>
+  <select id="index-select">
+    <option value="R_25" selected>Vix25</option>
+    <!-- Add other indices here -->
+  </select>
+  
+  <label for="tf-select">Timeframe:</label>
+  <select id="tf-select">
+    <option value="tick" selected>Tick</option>
+    <option value="1m">1m</option>
+    <option value="5m">5m</option>
+    <!-- Add more timeframes -->
+  </select>
+  
+  <div id="connection-status" class="disconnected">Disconnected</div>
 
-  <div id="signalBox">
-    <b>Active Signals:</b><br>
-    <i>Waiting for signals...</i>
+  <div id="chart-container">
+    <canvas id="chart"></canvas>
   </div>
 
-  <script>
-    const ctx = document.getElementById("lineChart").getContext("2d");
+  <div id="signal-list">
+    <b>Active Signals:</b>
+  </div>
 
-    const chart = new Chart(ctx, {
-      type: "line",
-      data: {
-        labels: [],
-        datasets: [{
-          label: "Vix25 Price",
-          data: [],
-          borderColor: "#0ff",
-          borderWidth: 2,
-          pointRadius: 0,
-          fill: false,
-        }]
-      },
-      options: {
-        responsive: true,
-        animation: false,
-        plugins: {
-          legend: { display: true }
-        },
-        scales: {
-          x: {
-            ticks: { color: "#ccc" }
-          },
-          y: {
-            ticks: { color: "#ccc" }
-          }
-        }
-      }
-    });
-
-    const signalBox = document.getElementById("signalBox");
-    let isInitialLoad = true;
-
-    function connectWS() {
-      const ws = new WebSocket(`ws://${location.host}/ws`);
-
-      ws.onmessage = (event) => {
-        const msg = JSON.parse(event.data);
-
-        // Initial full chart
-        if (msg.ticks && isInitialLoad) {
-          const labels = msg.ticks.map(t => new Date(t.time * 1000).toLocaleTimeString());
-          const data = msg.ticks.map(t => t.price);
-          chart.data.labels = labels;
-          chart.data.datasets[0].data = data;
-          chart.update();
-          isInitialLoad = false;
-        }
-
-        // Auto-update with latest tick
-        if (msg.ticks && msg.ticks.length > 0 && !isInitialLoad) {
-          const latest = msg.ticks[msg.ticks.length - 1];
-          const timeLabel = new Date(latest.time * 1000).toLocaleTimeString();
-
-          chart.data.labels.push(timeLabel);
-          chart.data.datasets[0].data.push(latest.price);
-
-          // Keep chart length at 300
-          if (chart.data.labels.length > 300) {
-            chart.data.labels.shift();
-            chart.data.datasets[0].data.shift();
-          }
-
-          chart.update();
-        }
-
-        // Update signal box
-        if (msg.signals) {
-          if (msg.signals.length === 0) {
-            signalBox.innerHTML = "<b>Active Signals:</b><br><i>No active signals.</i>";
-          } else {
-            signalBox.innerHTML = "<b>Active Signals:</b><br>";
-            msg.signals.forEach(sig => {
-              signalBox.innerHTML += `
-                <div class="signal">
-                  📍 Entry: <b>${sig.entry}</b><br>
-                  🎯 TP: <span style="color: #0f0;">${sig.tp}</span><br>
-                  🛑 SL: <span style="color: #f00;">${sig.sl}</span><br>
-                  🕒 Time: ${new Date(sig.entry_time * 1000).toLocaleTimeString()}
-                </div>
-              `;
-            });
-          }
-        }
-      };
-
-      ws.onerror = () => {
-        signalBox.innerHTML = "<b>WebSocket Error</b> - please check your backend.";
-      };
-
-      ws.onclose = () => {
-        setTimeout(connectWS, 3000); // Try reconnecting
-      };
-    }
-
-    connectWS();
-  </script>
+  <!-- Load your external chart.js script which handles the chart and websocket -->
+  <script src="chart.js"></script>
 </body>
 </html>
