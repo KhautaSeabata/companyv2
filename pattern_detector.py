@@ -46,6 +46,28 @@ class PatternDetector:
                     logger.error(f"Failed to fetch 1-minute data: {response.status}")
                     return None
 
+    def detect_patterns(tick_data):
+    """
+    Analyze tick data to detect patterns.
+    Returns a list of dictionaries with keys: entry_price, stop_loss, take_profit, pattern
+    """
+    patterns = []
+    # Your pattern detection logic here
+    # For example:
+    if len(tick_data) >= 3:
+        last_tick = tick_data[-1]
+        prev_tick = tick_data[-2]
+        if last_tick["quote"] > prev_tick["quote"]:
+            pattern = {
+                "entry_price": last_tick["quote"],
+                "stop_loss": last_tick["quote"] - 0.1,
+                "take_profit": last_tick["quote"] + 0.2,
+                "pattern": "Uptrend"
+            }
+            patterns.append(pattern)
+    return patterns
+
+
     def _process_ticks_data(self, data):
         """Process raw tick data into usable DataFrame."""
         if not data:
