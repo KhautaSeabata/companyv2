@@ -7,7 +7,7 @@ import json
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-FIREBASE_DB_BASE = "https://vix75-f6684-default-rtdb.firebaseio.com"
+FIREBASE_DB_BASE = "https://company-bdb78-default-rtdb.firebaseio.com"
 NODE_PATH = "/ticks/R_25.json"
 NODE_URL = FIREBASE_DB_BASE + NODE_PATH
 MAX_RECORDS = 999
