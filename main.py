@@ -1,70 +1,61 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-import httpx
+# main.py
 import asyncio
+import websockets
 import json
+import requests
+import time
 
-app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
+FIREBASE_URL = "https://company-bdb78-default-rtdb.firebaseio.com"
+DERIV_WS_URL = "wss://ws.derivws.com/websockets/v3?app_id=1089"
+SYMBOL = "R_25"
+MAX_RECORDS = 999
 
-FIREBASE_DB_URL = "https://company-bdb78-default-rtdb.firebaseio.com"
+def push_tick(tick_data):
+    url = f"{FIREBASE_URL}/ticks/{SYMBOL}.json"
+    response = requests.post(url, json=tick_data)
+    print("[TICK PUSHED]", tick_data if response.status_code == 200 else response.text)
 
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
+def trim_old_ticks():
+    url = f"{FIREBASE_URL}/ticks/{SYMBOL}.json?orderBy=\"epoch\"&limitToLast={MAX_RECORDS}"
+    res = requests.get(url)
+    if res.status_code == 200 and res.json():
+        ticks = res.json()
+        keep_keys = set(ticks.keys())
+        all_url = f"{FIREBASE_URL}/ticks/{SYMBOL}.json"
+        full_res = requests.get(all_url)
+        if full_res.status_code == 200 and full_res.json():
+            for k in full_res.json():
+                if k not in keep_keys:
+                    del_url = f"{FIREBASE_URL}/ticks/{SYMBOL}/{k}.json"
+                    requests.delete(del_url)
+                    print("[DELETED OLD TICK]", k)
 
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
+async def stream_ticks():
+    while True:
+        try:
+            async with websockets.connect(DERIV_WS_URL) as ws:
+                await ws.send(json.dumps({
+                    "ticks": SYMBOL,
+                    "subscribe": 1
+                }))
+                print("[STARTED] Subscribed to ticks")
 
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+                while True:
+                    msg = await ws.recv()
+                    data = json.loads(msg)
 
-    async def send_json(self, websocket: WebSocket, data):
-        await websocket.send_text(json.dumps(data))
+                    if "tick" in data:
+                        tick = {
+                            "symbol": data["tick"]["symbol"],
+                            "epoch": data["tick"]["epoch"],
+                            "quote": data["tick"]["quote"]
+                        }
 
-manager = ConnectionManager()
+                        push_tick(tick)
+                        trim_old_ticks()
+        except Exception as e:
+            print("[ERROR]", e)
+            time.sleep(5)
 
-def analyze_pattern(ticks):
-    if len(ticks) < 5:
-        return None
-    last = ticks[-1]["quote"]
-    prev = ticks[-5]["quote"]
-    if last > prev * 1.005:
-        return {
-            "pattern": "DummyUptrend",
-            "entry": last,
-            "tp": round(last * 1.01, 2),
-            "sl": round(last * 0.995, 2),
-            "time": ticks[-1]["epoch"],
-            "status": "Active"
-        }
-    return None
-
-async def fetch_last_300_ticks():
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(FIREBASE_DB_URL)
-        data = resp.json()
-        if not data:
-            return []
-        ticks_list = list(data.values())
-        ticks_list.sort(key=lambda x: x["epoch"])
-        return ticks_list[-300:]
-
-@app.get("/")
-async def serve_index():
-    return FileResponse("static/index.html")
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
-    try:
-        while True:
-            ticks_list = await fetch_last_300_ticks()
-            signal = analyze_pattern(ticks_list)
-            await manager.send_json(websocket, {"ticks": ticks_list, "signal": signal})
-            await asyncio.sleep(1)
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
- 
+if __name__ == "__main__":
+    asyncio.run(stream_ticks())
