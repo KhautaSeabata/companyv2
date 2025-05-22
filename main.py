@@ -1,4 +1,5 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
 import asyncio
@@ -25,7 +26,6 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# Dummy analyzer for example
 def analyze_pattern(ticks):
     if len(ticks) < 5:
         return None
@@ -48,12 +48,13 @@ async def fetch_last_300_ticks():
         data = resp.json()
         if not data:
             return []
-        # data is dict: key -> {epoch, quote, symbol}
         ticks_list = list(data.values())
-        # sort by epoch ascending
         ticks_list.sort(key=lambda x: x["epoch"])
-        # keep last 300
         return ticks_list[-300:]
+
+@app.get("/")
+async def serve_index():
+    return FileResponse("static/index.html")
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -66,4 +67,3 @@ async def websocket_endpoint(websocket: WebSocket):
             await asyncio.sleep(1)
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        print("Client disconnected")
