@@ -1,5 +1,4 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
 import asyncio
@@ -8,7 +7,10 @@ import json
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-FIREBASE_DB_URL = "https://vix75-f6684-default-rtdb.firebaseio.com/ticks/R_25.json"
+FIREBASE_DB_BASE = "https://vix75-f6684-default-rtdb.firebaseio.com"
+NODE_PATH = "/ticks/R_25.json"
+NODE_URL = FIREBASE_DB_BASE + NODE_PATH
+MAX_RECORDS = 999
 
 class ConnectionManager:
     def __init__(self):
@@ -42,9 +44,31 @@ def analyze_pattern(ticks):
         }
     return None
 
+async def prune_old_ticks():
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(NODE_URL)
+        data = resp.json()
+        if not data:
+            return
+
+        # Sort by epoch ascending (oldest first)
+        sorted_items = sorted(data.items(), key=lambda item: item[1]["epoch"])
+        total = len(sorted_items)
+
+        if total <= MAX_RECORDS:
+            return  # no pruning needed
+
+        to_delete = total - MAX_RECORDS
+        keys_to_delete = [k for k, v in sorted_items[:to_delete]]
+
+        delete_payload = {key: None for key in keys_to_delete}
+
+        patch_url = FIREBASE_DB_BASE + "/ticks/R_25.json"
+        await client.patch(patch_url, json=delete_payload)
+
 async def fetch_last_300_ticks():
     async with httpx.AsyncClient() as client:
-        resp = await client.get(FIREBASE_DB_URL)
+        resp = await client.get(NODE_URL)
         data = resp.json()
         if not data:
             return []
@@ -52,18 +76,16 @@ async def fetch_last_300_ticks():
         ticks_list.sort(key=lambda x: x["epoch"])
         return ticks_list[-300:]
 
-@app.get("/")
-async def serve_index():
-    return FileResponse("static/index.html")
-
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
+            await prune_old_ticks()  # prune old ticks first
             ticks_list = await fetch_last_300_ticks()
             signal = analyze_pattern(ticks_list)
             await manager.send_json(websocket, {"ticks": ticks_list, "signal": signal})
             await asyncio.sleep(1)
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+        print("Client disconnected")
