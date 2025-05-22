@@ -1,24 +1,30 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Vix25 Live Line Chart</title>
+  <title>Live Vix25 Chart</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="/static/chart.js"></script>
+  <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  <h2>Live Vix25 Chart</h2>
 
-<h2>📈 Vix25 Live Price Chart with Signals</h2>
-<div id="chart-container">
+  <label for="tickRange">Show last:</label>
+  <select id="tickRange">
+    <option value="100" selected>100 ticks</option>
+    <option value="200">200 ticks</option>
+    <option value="300">300 ticks</option>
+    <option value="400">400 ticks</option>
+    <option value="500">500 ticks</option>
+    <option value="600">600 ticks</option>
+    <option value="700">700 ticks</option>
+    <option value="800">800 ticks</option>
+    <option value="900">900 ticks</option>
+  </select>
+
   <canvas id="lineChart"></canvas>
-</div>
-
-<div id="signal-list">
-  <b>Active Signals:</b><br />
-  <i>Waiting for signals...</i>
-</div>
-
-<script src="/static/chart.js"></script>
+  <div id="signal-list"></div>
 </body>
 </html>
