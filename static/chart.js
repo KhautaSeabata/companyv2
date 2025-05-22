@@ -50,8 +50,7 @@ function updateChart(ticks) {
 }
 
 function displaySignal(signal) {
-  if (!signalList) return;
-  if (!signal) return;
+  if (!signalList || !signal) return;
   const html = `
     <div class="signal">
       <b>Pattern:</b> ${signal.pattern} <br />
@@ -62,7 +61,6 @@ function displaySignal(signal) {
       <b>Status:</b> ${signal.status || 'Active'}
     </div>
   `;
-  // Insert new signals on top
   signalList.insertAdjacentHTML('afterbegin', html);
 }
 
@@ -86,12 +84,8 @@ function connectWebSocket() {
 
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
-    if (msg.ticks) {
-      updateChart(msg.ticks);
-    }
-    if (msg.signal) {
-      displaySignal(msg.signal);
-    }
+    if (msg.ticks) updateChart(msg.ticks);
+    if (msg.signal) displaySignal(msg.signal);
   };
 }
 
