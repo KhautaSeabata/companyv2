@@ -1,5 +1,16 @@
+// Firebase init
+const firebaseConfig = {
+  databaseURL: "https://company-bdb78-default-rtdb.firebaseio.com"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
 let chart;
+let allTicks = [];
+let maxTicksToShow = 100;
+
 const signalList = document.getElementById("signal-list");
+const tickRange = document.getElementById("tickRange");
 
 function createChart() {
   const ctx = document.getElementById("lineChart").getContext("2d");
@@ -42,54 +53,28 @@ function createChart() {
   });
 }
 
-function updateChart(ticks) {
-  if (!ticks || ticks.length === 0) return;
-  chart.data.labels = ticks.map(t => new Date(t.epoch * 1000));
-  chart.data.datasets[0].data = ticks.map(t => t.quote);
+function updateChart() {
+  const displayTicks = allTicks.slice(-maxTicksToShow);
+  chart.data.labels = displayTicks.map(t => new Date(t.epoch * 1000));
+  chart.data.datasets[0].data = displayTicks.map(t => t.quote);
   chart.update();
 }
 
-function displaySignal(signal) {
-  if (!signalList || !signal) return;
-  const html = `
-    <div class="signal">
-      <b>Pattern:</b> ${signal.pattern} <br />
-      <b>Entry:</b> ${signal.entry} <br />
-      <b>TP:</b> ${signal.tp} <br />
-      <b>SL:</b> ${signal.sl} <br />
-      <b>Signal Time (JHB):</b> ${new Date(signal.time * 1000).toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', hour12: false })} <br />
-      <b>Status:</b> ${signal.status || 'Active'}
-    </div>
-  `;
-  signalList.insertAdjacentHTML('afterbegin', html);
-}
-
-function connectWebSocket() {
-  const protocol = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(`${protocol}://${location.host}/ws`);
-
-  ws.onopen = () => {
-    console.log("WebSocket connected");
-  };
-
-  ws.onclose = () => {
-    console.log("WebSocket disconnected");
-    signalList.innerHTML = "<b>Disconnected from server</b>";
-  };
-
-  ws.onerror = (e) => {
-    console.error("WebSocket error:", e);
-    signalList.innerHTML = "<b>WebSocket error occurred</b>";
-  };
-
-  ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    if (msg.ticks) updateChart(msg.ticks);
-    if (msg.signal) displaySignal(msg.signal);
-  };
+function listenToFirebase() {
+  const ref = db.ref("ticks/R_25").orderByChild("epoch").limitToLast(900);
+  ref.on("value", (snapshot) => {
+    const data = snapshot.val();
+    if (!data) return;
+    allTicks = Object.values(data).sort((a, b) => a.epoch - b.epoch);
+    updateChart();
+  });
 }
 
 window.onload = () => {
   createChart();
-  connectWebSocket();
+  listenToFirebase();
+  tickRange.addEventListener("change", () => {
+    maxTicksToShow = parseInt(tickRange.value);
+    updateChart();
+  });
 };
